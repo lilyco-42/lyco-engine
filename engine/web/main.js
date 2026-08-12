@@ -268,9 +268,12 @@ async function main() {
     $(id).addEventListener("click", (e) => { if (e.target === $(id)) $(id).hidden = true; });
   }
   // 🔊 重放最近语音
-  $("voice-ind").addEventListener("click", () => {
-    if (lastVoiceSrc) { const a = $("voice"); a.src = lastVoiceSrc; a.play().catch(() => {}); }
-  });
+  const voiceInd = $("voice-ind");
+  if (voiceInd) {
+    voiceInd.addEventListener("click", () => {
+      if (lastVoiceSrc) { const a = $("voice"); a.src = lastVoiceSrc; a.play().catch(() => {}); }
+    });
+  }
   bindSettings();
 }
 
@@ -441,6 +444,7 @@ let runId = 0;       // 场景切换代际
 let currentScnBytes = null; // 当前剧本字节(供引擎执行)
 let kagEffects = []; // 引擎效果流(kag_run_scene)
 let kagIndex = 0;
+let choosing = false; // 选择等待态:选项展示期间 advanceEngine 不跟随跳转
 
 let currentSceneLabel = null;
 async function playScene(label) {
@@ -448,6 +452,8 @@ async function playScene(label) {
   const s = scenes.find((x) => x.label === label);
   if (!s) return;
   if (/_(sel|select)$/i.test(label)) { showChoices(s); return; }
+  // 进入正常对话:清掉旧选项(否则点击选项后旧按钮叠在对话上)
+  $("choices").textContent = "";
   $("dialogue-box").hidden = false;
   $("stage-empty").hidden = true;
   if (!currentScnBytes) { log("[错误] 剧本字节缺失"); return; }
@@ -473,6 +479,7 @@ function advanceEngine() {
     }
   }
   // 场景结束 → 跟随场景跳转(跨文件导航)
+  if (choosing) return; // 等待选择:不跟随 sel 场景自身的跳转
   if (currentSceneLabel) {
     const sc = scenes.find((x) => x.label === currentSceneLabel);
     const jump = sc && sc.steps.find((st) => st.type === "jump" && (st.target || st.storage));
@@ -721,11 +728,13 @@ async function findBranches(selScene) {
 
 async function showChoices(selScene) {
   stopAuto();
+  choosing = true; // 等待选择:期间 advanceEngine 不跟随 sel 的跳转
   const branches = await findBranches(selScene);
   $("speaker").textContent = "选择";
   const box = $("choices");
   box.textContent = "";
   if (!branches.length) {
+    choosing = false;
     $("dialogue-text").textContent = "—— 选择分支数据未解出 ——";
     $("hint").textContent = "选择场景后可重播";
     return;
@@ -741,7 +750,13 @@ async function showChoices(selScene) {
     btn.className = "choice-btn";
     btn.textContent = `${i + 1}. ${label.slice(0, 28)}`;
     btn.title = `跳转到 ${b.label}`;
-    btn.addEventListener("click", () => playScene(b.label));
+    // 阻断冒泡到 .stage 的 manualAdvance;选择后清除等待态并跳转
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      choosing = false;
+      playScene(b.label);
+    });
     box.appendChild(btn);
   });
 }
@@ -1033,6 +1048,8 @@ function playBgm(name) {
 
 async function playVoice(ref) {
   if (!ref || currentSource?.kind !== "backend") return;
+  // 空值防护:某些缓存/旧页可能缺失 #voice-ind
+  const ind = $("voice-ind");
   const candidates = [`${ref}.ogg`, `${ref}.wav`, ref];
   for (const path of candidates) {
     try {
@@ -1042,12 +1059,12 @@ async function playVoice(ref) {
       lastVoiceSrc = audio.src;
       audio.volume = settings.voice;
       audio.play().catch(() => {});
-      $("voice-ind").hidden = false;
+      if (ind) ind.hidden = false;
       log(`[语音] ${path}`);
       return;
     } catch { /* 尝试下一种命名 */ }
   }
-  $("voice-ind").hidden = true;
+  if (ind) ind.hidden = true;
   log(`[语音] 未找到 ${ref}`);
 }
 
