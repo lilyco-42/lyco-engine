@@ -16,11 +16,14 @@ use yuzu_xp3::{Simple, SimpleKind, Xp3Archive};
 #[command(
     name = "yuzu-cli",
     version,
-    about = "柚子社(Yuzusoft)资源工具: psb/scn/pimg/tlg"
+    about = "柚子社(Yuzusoft)资源工具: psb/scn/pimg/tlg;傻瓜模式: yuzu <name.apk>"
 )]
 struct Cli {
     #[command(subcommand)]
-    cmd: Cmd,
+    cmd: Option<Cmd>,
+    /// 傻瓜模式:直接传 .apk 文件或游戏数据目录 → 一键提取 XP3 + 启动 Web + 打开浏览器
+    #[arg(value_name = "FILE")]
+    file: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -65,6 +68,20 @@ enum Cmd {
     Xp3 {
         #[command(subcommand)]
         action: Xp3Action,
+    },
+    /// 傻瓜模式:从 APK 提取 XP3 归档到 yuzu-data/,启动 Web 并打开浏览器
+    Apk {
+        /// APK 文件路径
+        file: String,
+    },
+    /// 启动 Web 播放器(内嵌资源),自动打开浏览器
+    Web {
+        /// 游戏数据目录(含 .xp3)
+        #[arg(long, default_value = "yuzu-data")]
+        data: String,
+        /// 监听地址
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        addr: String,
     },
 }
 
@@ -133,6 +150,7 @@ enum Xp3Action {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
+        Some(cmd) => match cmd {
         Cmd::Psb { action } => match action {
             PsbAction::Dump { file } => cmd_psb_dump(&file),
             PsbAction::Extract { file, output } => cmd_psb_extract(&file, &output),
@@ -161,6 +179,16 @@ Cmd::Play { file, scene, .. } => cmd_play(&file, scene.as_deref()),
                 output,
                 scheme,
             } => cmd_xp3_read(&file, &name, output.as_deref(), scheme.as_deref()),
+        },
+        Cmd::Apk { file } => cmd_apk(&file),
+        Cmd::Web { data, addr } => cmd_web(&data, &addr, true),
+        },
+        // 傻瓜模式:yuzu <name.apk> 或 yuzu <数据目录>
+        None => match cli.file.as_deref() {
+            Some(f) if f.to_lowercase().ends_with(".apk") => cmd_apk(f),
+            Some(f) if Path::new(f).is_dir() => cmd_web(f, "127.0.0.1:8080", true),
+            Some(f) => bail!("无法识别 {f}:需要 .apk 文件或游戏数据目录"),
+            None => bail!("缺少参数: yuzu <name.apk> | yuzu web --data <dir> | yuzu <子命令>"),
         },
     }
 }
@@ -525,6 +553,118 @@ fn cmd_play(file: &str, scene: Option<&str>) -> Result<()> {
     }
     println!("[统计] 台词 {dlg} | 图层 {lay} | 音频 {aud} | 章节 {chp}");
     Ok(())
+}
+
+// ---------- 傻瓜模式:APK → 提取 → Web ----------
+
+/// 内嵌的 web 播放器资源(engine/web/),让独立安装的二进制无需外部文件即可运行。
+#[derive(rust_embed::RustEmbed)]
+#[folder = "../../web"]
+struct WebAssets;
+
+/// 把内嵌播放器落盘到 `out`(首次运行;已有则跳过)。
+fn materialize_web(out: &Path) -> Result<()> {
+    if out.join("index.html").is_file() {
+        return Ok(());
+    }
+    fs::create_dir_all(out)?;
+    let mut n = 0usize;
+    for f in WebAssets::iter() {
+        let name = f.as_ref();
+        if name.contains("pkg-node") {
+            continue; // Node 宿主绑定不需要,减小体积
+        }
+        if let Some(data) = WebAssets::get(name) {
+            let path = out.join(name);
+            if let Some(p) = path.parent() {
+                fs::create_dir_all(p)?;
+            }
+            fs::write(&path, data.data.as_ref())?;
+            n += 1;
+        }
+    }
+    println!("✓ 播放器资源已落盘: {} ({n} 文件)", out.display());
+    Ok(())
+}
+
+/// 启动内嵌 Web 播放器:API(懒加载 XP3)+ 播放器静态页,自动开浏览器。
+fn cmd_web(data: &str, addr: &str, open: bool) -> Result<()> {
+    let web_dir = if Path::new("web").is_dir() {
+        "web".to_string() // 源码目录运行:直接用仓库 web/
+    } else {
+        let out = PathBuf::from(".yuzu-web");
+        materialize_web(&out)?;
+        out.to_string_lossy().into_owned()
+    };
+    let url = format!("http://{addr}/");
+    println!("▶ 播放器: {url}  (data={data})");
+    if open {
+        open_browser(&url);
+    }
+    yuzu_server::serve(data, &web_dir, addr)
+}
+
+/// 跨平台打开默认浏览器。
+fn open_browser(url: &str) {
+    let spawned = if cfg!(windows) {
+        std::process::Command::new("cmd").args(["/c", "start", "", url]).spawn()
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(url).spawn()
+    } else {
+        std::process::Command::new("xdg-open").arg(url).spawn()
+    };
+    if let Err(e) = spawned {
+        println!("[提示] 自动打开浏览器失败: {e} (手动访问 {url})");
+    }
+}
+
+/// 傻瓜入口:从 APK(zip)提取全部 XP3 归档(扩展名或魔数)到 yuzu-data/,然后启动 Web。
+fn cmd_apk(path: &str) -> Result<()> {
+    use std::io::Read;
+    let f = std::fs::File::open(path).with_context(|| format!("打开 APK 失败: {path}"))?;
+    let mut zip = zip::ZipArchive::new(f).with_context(|| format!("解包失败(非 zip): {path}"))?;
+    let base = Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "game".into());
+    let out = PathBuf::from("yuzu-data").join(&base);
+    fs::create_dir_all(&out)?;
+
+    // 第一遍:识别 XP3 条目(扩展名 .xp3,或魔数 "XP3\r")
+    let mut hits: Vec<(usize, String, u64)> = Vec::new();
+    for i in 0..zip.len() {
+        let (name, size, is_dir) = {
+            let e = zip.by_index(i)?;
+            (e.name().to_string(), e.size(), e.is_dir())
+        };
+        if is_dir {
+            continue;
+        }
+        if name.to_lowercase().ends_with(".xp3") {
+            hits.push((i, name, size));
+            continue;
+        }
+        // 魔数嗅探:改名/无扩展名的归档(跳过超大条目)
+        if size <= 64 * 1024 * 1024 {
+            let mut head = [0u8; 4];
+            let mut fe = zip.by_index(i)?;
+            if fe.read_exact(&mut head).is_ok() && &head == b"XP3\r" {
+                hits.push((i, name, size));
+            }
+        }
+    }
+    if hits.is_empty() {
+        bail!("APK 中未找到 XP3 归档(data.xp3 等)。可能数据在外部存储/OBB,见 README「从 APK 提取」");
+    }
+    for (i, name, size) in &hits {
+        let mut e = zip.by_index(*i)?;
+        let safe = name.rsplit(['/', '\\']).next().unwrap_or(name).to_string();
+        let mut of = fs::File::create(out.join(&safe))?;
+        std::io::copy(&mut e, &mut of)?;
+        println!("  {safe} ({} bytes)", size);
+    }
+    println!("✓ 提取 {} 个 XP3 到 {}", hits.len(), out.display());
+    cmd_web(out.to_string_lossy().as_ref(), "127.0.0.1:8080", true)
 }
 
 #[cfg(test)]

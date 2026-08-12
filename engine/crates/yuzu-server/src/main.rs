@@ -6,16 +6,8 @@
 //! yuzu-server --data realgame --web web --addr 0.0.0.0:8080
 //! ```
 
-mod api;
-mod decode;
-mod repo;
-
-use std::path::PathBuf;
-use std::sync::Arc;
-
 use anyhow::Result;
 use clap::Parser;
-use repo::ArchiveRepo;
 
 #[derive(Parser)]
 #[command(
@@ -35,21 +27,7 @@ struct Cli {
     addr: String,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
-
-    let state = Arc::new(api::AppState {
-        repo: Arc::new(ArchiveRepo::new(cli.data.clone())),
-        web_dir: PathBuf::from(cli.web.clone()),
-    });
-    let app = api::router(state);
-
-    let listener = tokio::net::TcpListener::bind(&cli.addr).await?;
-    println!(
-        "yuzu-server 就绪: http://{}  (data={}  web={})",
-        cli.addr, cli.data, cli.web
-    );
-    axum::serve(listener, app).await?;
-    Ok(())
+    yuzu_server::serve(cli.data, cli.web, cli.addr)
 }

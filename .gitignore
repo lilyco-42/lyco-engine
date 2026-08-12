@@ -13,3 +13,4 @@ engine/fixtures/
 .claude/
 *.log
 engine/bg.pid
+engine/yuzu-data/

@@ -41,6 +41,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         HeaderValue::from_static("no-cache"),
     );
     Router::new()
+        .merge(api_routes(state))
+        .fallback_service(serve)
+        .layer(no_cache)
+}
+
+/// 纯 API 路由(无静态回退),供嵌入式宿主(如 yuzu-cli web)自行挂载静态资源。
+pub fn api_routes(state: Arc<AppState>) -> Router {
+    Router::new()
         .route("/api/health", get(health))
         .route("/api/version", get(version_manifest))
         .route("/api/archives", get(list_archives))
@@ -48,8 +56,6 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/archives/:name/file", get(archive_file))
         .route("/api/archives/:name/scn", get(archive_scn))
         .route("/api/archives/:name/img", get(archive_img))
-        .fallback_service(serve)
-        .layer(no_cache)
         .with_state(state)
 }
 
