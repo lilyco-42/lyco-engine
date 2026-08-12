@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/yuzu-psb",
+    "crates/yuzu-tlg",
+    "crates/yuzu-pimg",
+    "crates/yuzu-scn",
+    "crates/yuzu-xp3",
+    "crates/yuzu-engine",
+    "crates/yuzu-cli",
+    "crates/yuzu-wasm",
+    "crates/yuzu-server",
+    "crates/yuzu-kag",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/local/lyco"
+rust-version = "1.70"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+
+# WASM 体积优化
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+strip = "debuginfo"

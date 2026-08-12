@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="yuzu-web —— 柚子社剧本浏览器播放器(XP3 解包 → 剧本解析 → 播放)">
+  <title>yuzu-web · 剧本播放器</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>yuzu-web</h1>
+    <span class="version" id="engine-version" aria-live="polite">加载中…</span>
+    <span class="spacer"></span>
+    <label class="btn btn-open" for="file-input" title="选择本地的 .xp3 归档,在浏览器内解包并播放">
+      打开 .xp3 文件
+    </label>
+    <input type="file" id="file-input" accept=".xp3" hidden>
+  </header>
+
+  <!-- 热更新提示横幅(资源版本变更时出现) -->
+  <div class="update-banner" id="update-banner" hidden></div>
+
+  <main class="layout">
+    <!-- 标题屏(原作流程:Logo → 标题 → 开始游戏) -->
+    <div class="title-screen" id="title-screen">
+      <h2 class="title-logo">千恋万花</h2>
+      <p class="title-sub">WASM 引擎 · 完全复刻</p>
+      <div class="title-menu">
+        <button id="title-newgame" class="btn btn-primary">开始游戏</button>
+        <button id="title-chart" class="btn">场景图</button>
+        <button id="title-extra" class="btn">Extra(后日谈)</button>
+      </div>
+    </div>
+    <!-- 舞台:背景 + 对话框 -->
+    <section class="stage" id="stage" aria-label="游戏舞台">
+      <img id="background" alt="背景" hidden>
+      <img id="character" alt="角色" hidden>
+      <div class="stage-empty" id="stage-empty">加载演示数据…</div>
+      <div class="controls" id="controls">
+        <button id="ctl-auto" class="btn btn-small" title="自动播放">自动</button>
+        <button id="ctl-skip" class="btn btn-small" title="快进(不停留台词)">跳过</button>
+        <button id="ctl-backlog" class="btn btn-small" title="查看对话历史">回看</button>
+        <button id="ctl-save" class="btn btn-small" title="保存进度">存档</button>
+        <button id="ctl-load" class="btn btn-small" title="读取存档">读档</button>
+        <button id="ctl-title" class="btn btn-small" title="回到标题">标题</button>
+      </div>
+      <div class="dialogue-box" id="dialogue-box" hidden>
+        <div class="speaker" id="speaker"><span id="voice-ind" hidden>🔊</span></div>
+        <div class="dialogue-text" id="dialogue-text"></div>
+        <div id="choices"></div>
+        <div class="hint" id="hint">点击舞台 / 空格 推进</div>
+      </div>
+      <audio id="voice" preload="none"></audio>
+      <audio id="bgm" loop hidden></audio>
+    </section>
+
+    <!-- 侧栏:场景 / 解包 / 日志 -->
+    <aside class="panel">
+      <section class="card">
+        <h2>场景图 <span class="badge">原作流程</span></h2>
+        <div class="row">
+          <select id="chapter-select" aria-label="选择章节/路线"></select>
+        </div>
+        <p class="meta" id="chapter-info"></p>
+      </section>
+
+      <section class="card">
+        <h2>场景</h2>
+        <div class="row">
+          <select id="scene-select" aria-label="选择场景"></select>
+          <button id="play-btn" class="btn btn-primary">▶ 播放</button>
+        </div>
+        <p class="meta" id="scene-info"></p>
+      </section>
+
+      <section class="card">
+        <h2>设置</h2>
+        <label class="setting">BGM 音量
+          <input type="range" id="set-bgm" min="0" max="100" value="80">
+        </label>
+        <label class="setting">语音音量
+          <input type="range" id="set-voice" min="0" max="100" value="100">
+        </label>
+        <label class="setting">自动间隔
+          <select id="set-speed">
+            <option value="0.5">快</option>
+            <option value="0.8">普通</option>
+            <option value="1.2" selected>慢</option>
+          </select>
+        </label>
+        <p class="meta">设置自动保存到本地</p>
+      </section>
+
+      <section class="card">
+        <h2>解包(XP3) <span class="badge">后端懒加载</span></h2>
+        <div class="row">
+          <select id="archive-select" aria-label="选择归档"><option value="">— 选择归档 —</option></select>
+        </div>
+        <p class="meta" id="xp3-summary"></p>
+        <p class="meta" id="cache-stats">流式缓存: -</p>
+        <ul class="xp3-list" id="xp3-files"></ul>
+      </section>
+
+      <section class="card">
+        <h2>引擎日志</h2>
+        <pre class="log" id="log"></pre>
+      </section>
+    </aside>
+  </main>
+
+  <!-- 回看历史(对话记录) -->
+  <div class="modal" id="backlog-modal" hidden>
+    <div class="modal-box">
+      <h2>对话历史</h2>
+      <div class="backlog-list" id="backlog-list"></div>
+      <div class="modal-actions">
+        <button id="backlog-close" class="btn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 存档 / 读档 -->
+  <div class="modal" id="save-modal" hidden>
+    <div class="modal-box">
+      <h2 id="save-title">存档</h2>
+      <div class="save-slots" id="save-slots"></div>
+      <div class="modal-actions">
+        <button id="save-close" class="btn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

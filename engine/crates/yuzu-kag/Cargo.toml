@@ -1,0 +1,12 @@
+[package]
+name = "yuzu-kag"
+description = "KiriKiri KAG 场景引擎 —— 执行游戏图层/音频/流程逻辑(非播放器)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+yuzu-scn = { path = "../yuzu-scn" }

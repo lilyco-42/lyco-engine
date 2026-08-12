@@ -1,0 +1,11 @@
+[package]
+name = "yuzu-scn"
+description = "柚子社 SCN 剧本(.ks.scn → PSB)解析为结构化模型"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+yuzu-psb = { path = "../yuzu-psb" }
+serde_json = "1"

@@ -1,0 +1,13 @@
+[package]
+name = "yuzu-psb"
+description = "M2/EMT PSB 解析门面 — 基于 crates.io emote-psb,千恋万花 .scn/.pimg/.psb 统一入口"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+emote-psb = "0.8"
+serde_json = "1"
+
+[dev-dependencies]

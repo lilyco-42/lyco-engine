@@ -1,0 +1,10 @@
+[package]
+name = "yuzu-xp3"
+description = "KiriKiri XP3 归档读取器 + 柚子社加密方案(SenrenCxCrypt 等)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+flate2 = "1"

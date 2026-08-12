@@ -1,0 +1,13 @@
+[package]
+name = "yuzu-pimg"
+description = "柚子社 PIMG(分层立绘/差分合成)解析与渲染"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+yuzu-psb = { path = "../yuzu-psb" }
+yuzu-tlg = { path = "../yuzu-tlg" }
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde_json = "1"

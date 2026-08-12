@@ -1,0 +1,13 @@
+[package]
+name = "yuzu-engine"
+description = "VN 运行时引擎(合成器 / 剧本机 / 存档) — 纯 Rust,可编译为 wasm32"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+yuzu-psb = { path = "../yuzu-psb" }
+yuzu-scn = { path = "../yuzu-scn" }
+yuzu-pimg = { path = "../yuzu-pimg" }
+yuzu-tlg = { path = "../yuzu-tlg" }

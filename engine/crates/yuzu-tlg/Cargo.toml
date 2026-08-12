@@ -1,0 +1,14 @@
+[package]
+name = "yuzu-tlg"
+description = "Kirikiri TLG5/TLG6 纹理解码门面(基于 crates.io tlg-rs)——千恋万花 立绘/背景"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tlg-rs = { version = "0.1" }
+image = { version = "0.25", default-features = false }
+
+[dev-dependencies]
+yuzu-psb = { path = "../yuzu-psb" }

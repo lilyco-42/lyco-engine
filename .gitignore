@@ -1,2 +1,15 @@
+# Rust 构建产物(2.9G,根 + 工作区)
 /target
-/engine
+engine/target/
+**/target/
+
+# 游戏资源数据(版权,不入库;含 .xp3 归档与 IDA 数据库)
+/engine/realgame/
+
+# 第三方夹具(嵌套 git 仓库,无提交)
+engine/fixtures/
+
+# 运行/临时
+.claude/
+*.log
+engine/bg.pid
