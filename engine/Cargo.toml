@@ -17,7 +17,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/local/lyco"
+repository = "https://github.com/lilyco-42/lyco-engine"
 rust-version = "1.70"
 
 [profile.release]

@@ -14,12 +14,33 @@
 
 ## 目录
 
+- [0. 一键安装与傻瓜玩法](#0-一键安装与傻瓜玩法)
 - [1. 我有 APK,怎么玩](#1-我有-apk怎么玩)
 - [2. 快速开始(已有解包数据)](#2-快速开始已有解包数据)
 - [3. 架构](#3-架构)
 - [4. 命令行工具](#4-命令行工具)
 - [5. 从源码构建](#5-从源码构建)
 - [6. 常见问题](#6-常见问题)
+
+---
+
+## 0. 一键安装与傻瓜玩法
+
+```bash
+# 1) 安装(推荐:预编译二进制;或源码安装 cargo install --path crates/yuzu-cli)
+cargo binstall yuzu-cli
+
+# 2) 傻瓜玩法:一个 APK,一条命令,自动开浏览器
+yuzu-cli 千恋万花.apk
+# → 从 APK 提取 XP3 归档到 yuzu-data/ → 启动内嵌 web 播放器 → 自动打开浏览器
+
+# 已解包的数据目录同理
+yuzu-cli 你的数据目录/      # 或 yuzu-cli web --data 你的数据目录/
+```
+
+> **发布流程(仓库维护者)**:`cargo build --release -p yuzu-cli`,把 `target/release/yuzu-cli`(Windows 为 `.exe`)
+> 以 `yuzu-cli-<目标三元组>.exe` 命名上传到 GitHub Release;`cargo binstall yuzu-cli` 会按
+> `repository` 字段定位并下载。二进制已内嵌播放器资源,单文件可运行,无需额外 `web/` 目录。
 
 ---
 
