@@ -27,8 +27,8 @@
 ## 0. 一键安装与傻瓜玩法
 
 ```bash
-# 1) 安装(推荐:预编译二进制;或源码安装 cargo install --path crates/yuzu-cli)
-cargo binstall yuzu-cli
+# 1) 安装(源码安装;或直接下载 GitHub Release 的预编译二进制)
+cargo install --path crates/yuzu-cli
 
 # 2) 傻瓜玩法:一个 APK,一条命令,自动开浏览器
 yuzu-cli 千恋万花.apk
@@ -38,9 +38,10 @@ yuzu-cli 千恋万花.apk
 yuzu-cli 你的数据目录/      # 或 yuzu-cli web --data 你的数据目录/
 ```
 
-> **发布流程(仓库维护者)**:`cargo build --release -p yuzu-cli`,把 `target/release/yuzu-cli`(Windows 为 `.exe`)
-> 以 `yuzu-cli-<目标三元组>.exe` 命名上传到 GitHub Release;`cargo binstall yuzu-cli` 会按
-> `repository` 字段定位并下载。二进制已内嵌播放器资源,单文件可运行,无需额外 `web/` 目录。
+> **发布流程(仓库维护者)**:`cargo build --release -p yuzu-cli`,把 `target/release/yuzu-cli`
+> (Windows 为 `.exe`)以 `yuzu-cli-<目标三元组>.exe` 上传到 GitHub Release,即可免编译下载。
+> 二进制已内嵌播放器资源,单文件可运行,无需额外 `web/` 目录。
+> (注:因仓库为私有,未发布到 crates.io,`cargo binstall` 不适用;源码安装即可。)
 
 ---
 
