@@ -1,6 +1,6 @@
 [package]
 name = "lyco"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 rust-version = "1.70"
 description = "统一多语言脚手架工具 · gh api 驱动 + 声明式模板"
