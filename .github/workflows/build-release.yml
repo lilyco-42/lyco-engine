@@ -96,25 +96,19 @@ jobs:
         with:
           targets: aarch64-linux-android
 
-      - name: Install Android NDK
-        uses: warchant/action-setup-android@v1
-        with:
-          ndk-version: "25.2.9519653"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK (via sdkmanager)
+        run: |
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.0.12077973" >/dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
 
       - name: Install cargo-ndk
         uses: taiki-e/install-action@cargo-ndk
 
       - name: Build (aarch64-linux-android)
-        run: |
-          # warchant/action-setup-android 设置 ANDROID_NDK_HOME;兜底探测
-          if [ -z "${ANDROID_NDK_HOME:-}" ]; then
-            for p in "$ANDROID_HOME/ndk/25.2.9519653" "$ANDROID_SDK_ROOT/ndk/25.2.9519653" /usr/local/lib/android/sdk/ndk/25.2.9519653; do
-              [ -d "$p" ] && export ANDROID_NDK_HOME="$p" && break
-            done
-          fi
-          echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}"
-          test -n "${ANDROID_NDK_HOME:-}" || { echo "::error::NDK 未找到"; exit 1; }
-          cargo ndk -t arm64-v8a build --release --locked
+        run: cargo ndk --platform 24 -t arm64-v8a build --release --locked
 
       - name: Locate binary
         shell: bash
