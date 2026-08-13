@@ -5,6 +5,16 @@ edition = "2021"
 rust-version = "1.70"
 description = "统一多语言脚手架工具 · gh api 驱动 + 声明式模板"
 license = "MIT"
+repository = "https://github.com/lilyco-42/lyco-engine"
+readme = "README.md"
+keywords = ["scaffold", "template", "cli", "android", "minecraft"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".github/", "engine/", "tests/", "target/", "process_whitelist.json", ".opencode/", ".claude/"]
+
+# cargo-binstall 索引:release 资产按 `lyco-{target}` 命名(见 .github/workflows/build-release.yml)
+[package.metadata.binstall]
+pkg-url = "https://github.com/lilyco-42/lyco-engine/releases/download/{version}/lyco-{target}"
+pkg-fmt = "bin"
 
 [dependencies]
 anyhow = "1"

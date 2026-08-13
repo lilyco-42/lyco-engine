@@ -29,21 +29,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # 资产名 = `lyco-{target}`(标准 target triple),匹配 cargo-binstall 约定。
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl        # Linux x86_64 静态
-            artifact: lyco-linux-x86_64
+            target: x86_64-unknown-linux-gnu         # Linux x86_64(binstall 默认目标)
           - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl        # Linux arm64 静态(Termux 亦可用)
-            artifact: lyco-linux-aarch64
+            target: x86_64-unknown-linux-musl        # Linux x86_64 静态(无 glibc 依赖)
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl        # Linux arm64 静态
           - os: windows-latest
             target: x86_64-pc-windows-msvc            # Windows
-            artifact: lyco-windows-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin              # macOS Apple Silicon
-            artifact: lyco-macos-aarch64
           - os: macos-15-intel
             target: x86_64-apple-darwin               # macOS Intel
-            artifact: lyco-macos-x86_64
 
     steps:
       - uses: actions/checkout@v4
@@ -53,17 +51,17 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # Linux musl 需交叉编译;用 cross(musl 静态链接,无需系统 libc)
-      - name: Install cross (musl targets)
-        if: contains(matrix.target, 'musl')
+      # Linux musl / 非宿主交叉目标需 cross 容器(静态链接,无需系统 libc)
+      - name: Install cross
+        if: contains(matrix.target, 'musl') || matrix.target == 'aarch64-unknown-linux-gnu'
         uses: taiki-e/install-action@cross
 
       - name: Build (native)
-        if: ${{ !contains(matrix.target, 'musl') }}
+        if: ${{ !(contains(matrix.target, 'musl') || matrix.target == 'aarch64-unknown-linux-gnu') }}
         run: cargo build --release --locked
 
-      - name: Build (cross / musl)
-        if: contains(matrix.target, 'musl')
+      - name: Build (cross)
+        if: contains(matrix.target, 'musl') || matrix.target == 'aarch64-unknown-linux-gnu'
         run: cross build --release --locked --target ${{ matrix.target }}
 
       - name: Prepare artifact
@@ -74,11 +72,11 @@ jobs:
           SRC="target/${{ matrix.target }}/release/$BIN"
           [ -f "$SRC" ] || SRC="target/release/$BIN"
           mkdir -p dist
-          cp "$SRC" "dist/${{ matrix.artifact }}$( [ "${{ matrix.os }}" = "windows-latest" ] && echo .exe || echo '' )"
+          cp "$SRC" "dist/lyco-${{ matrix.target }}$( [ "${{ matrix.os }}" = "windows-latest" ] && echo .exe || echo '' )"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: lyco-${{ matrix.target }}
           path: dist/
           if-no-files-found: error
 
@@ -116,12 +114,12 @@ jobs:
           set -e
           BIN=$(find target -type f -name lyco | head -1)
           mkdir -p dist
-          cp "$BIN" dist/lyco-termux-arm64
-          file dist/lyco-termux-arm64 || true
+          cp "$BIN" dist/lyco-aarch64-linux-android
+          file dist/lyco-aarch64-linux-android || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: lyco-termux-arm64
+          name: lyco-aarch64-linux-android
           path: dist/
           if-no-files-found: error
 
