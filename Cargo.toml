@@ -1,6 +1,6 @@
 [package]
 name = "lyco"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.70"
 description = "统一多语言脚手架工具 · gh api 驱动 + 声明式模板"
@@ -11,9 +11,10 @@ keywords = ["scaffold", "template", "cli", "android", "minecraft"]
 categories = ["command-line-utilities", "development-tools"]
 exclude = [".github/", "engine/", "tests/", "target/", "process_whitelist.json", ".opencode/", ".claude/"]
 
-# cargo-binstall 索引:release 资产按 `lyco-{target}` 命名(见 .github/workflows/build-release.yml)
+# cargo-binstall 索引:release 资产按 `lyco-{target}` 命名(见 .github/workflows/build-release.yml)。
+# {binary_ext} 让 Windows 展开为 .exe(资产为 lyco-x86_64-pc-windows-msvc.exe),其余平台为空。
 [package.metadata.binstall]
-pkg-url = "https://github.com/lilyco-42/lyco-engine/releases/download/{version}/lyco-{target}"
+pkg-url = "https://github.com/lilyco-42/lyco-engine/releases/download/{version}/lyco-{target}{binary_ext}"
 pkg-fmt = "bin"
 
 [dependencies]
