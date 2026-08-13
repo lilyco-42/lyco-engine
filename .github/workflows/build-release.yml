@@ -130,18 +130,18 @@ jobs:
   # yuzu 引擎 —— 主流平台(yuzu-cli + yuzu-server)
   # ---------------------------------------------------------------
   engine:
-    name: engine (${{ matrix.os }})
+    name: engine (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: engine-linux-x86_64
+            target: x86_64-unknown-linux-gnu
           - os: windows-latest
-            artifact: engine-windows-x86_64
+            target: x86_64-pc-windows-msvc
           - os: macos-latest
-            artifact: engine-macos-aarch64
+            target: aarch64-apple-darwin
     defaults:
       run:
         working-directory: engine
@@ -159,14 +159,18 @@ jobs:
         run: |
           set -e
           mkdir -p ../dist
-          EXT=""; [ "${{ matrix.os }}" = "windows-latest" ] && EXT=".exe"
+          # 资产命名 `yuzu-cli-{target}`(Windows 也去 .exe),匹配 cargo-binstall 约定
           for b in yuzu-cli yuzu-server; do
-            cp "target/release/$b$EXT" "../dist/$b$EXT" || echo "::warning::$b not found"
+            if [ "${{ matrix.os }}" = "windows-latest" ]; then
+              cp "target/release/$b.exe" "../dist/$b-${{ matrix.target }}"
+            else
+              cp "target/release/$b" "../dist/$b-${{ matrix.target }}"
+            fi
           done
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: ${{ matrix.target }}
           path: dist/
           if-no-files-found: warn
 

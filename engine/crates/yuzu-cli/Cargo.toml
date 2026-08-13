@@ -1,10 +1,22 @@
 [package]
 name = "yuzu-cli"
 description = "Project2 引擎命令行工具(psb/scn/pimg/xp3 检视与提取)"
-version.workspace = true
+version = "0.1.2"           # 独立于 workspace 版本,以发布带 binstall metadata 的新版
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+readme = "README.md"
+
+# 说明:crates.io 源码包不含内嵌 web 播放器资源(6MB,含 wasm,不宜入包)。
+# 推荐用 `cargo binstall yuzu-cli` 下载预编译二进制(资源已内嵌);
+# 源码安装请在仓库内 `cargo install --path engine/crates/yuzu-cli`(此时 rust-embed 经
+# $CARGO_MANIFEST_DIR 定位 ../../web)。发布用 --no-verify 跳过无 web 的 verify 编译。
+
+# cargo-binstall 索引:release 资产按 `yuzu-cli-{target}` 命名(见 .github/workflows/build-release.yml)
+[package.metadata.binstall]
+pkg-url = "https://github.com/lilyco-42/lyco-engine/releases/download/{version}/yuzu-cli-{target}"
+pkg-fmt = "bin"
 
 [dependencies]
 anyhow = "1"
@@ -12,11 +24,11 @@ clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 zip = "2"
 rust-embed = "8"
-yuzu-psb = { path = "../yuzu-psb" }
-yuzu-scn = { path = "../yuzu-scn" }
-yuzu-pimg = { path = "../yuzu-pimg" }
-yuzu-tlg = { path = "../yuzu-tlg" }
-yuzu-xp3 = { path = "../yuzu-xp3" }
-yuzu-kag = { path = "../yuzu-kag" }
-yuzu-engine = { path = "../yuzu-engine" }
-yuzu-server = { path = "../yuzu-server" }
+yuzu-psb = { path = "../yuzu-psb", version = "0.1.0" }
+yuzu-scn = { path = "../yuzu-scn", version = "0.1.0" }
+yuzu-pimg = { path = "../yuzu-pimg", version = "0.1.0" }
+yuzu-tlg = { path = "../yuzu-tlg", version = "0.1.0" }
+yuzu-xp3 = { path = "../yuzu-xp3", version = "0.1.0" }
+yuzu-kag = { path = "../yuzu-kag", version = "0.1.0" }
+yuzu-engine = { path = "../yuzu-engine", version = "0.1.0" }
+yuzu-server = { path = "../yuzu-server", version = "0.1.0" }

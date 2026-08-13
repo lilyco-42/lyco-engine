@@ -558,8 +558,11 @@ fn cmd_play(file: &str, scene: Option<&str>) -> Result<()> {
 // ---------- 傻瓜模式:APK → 提取 → Web ----------
 
 /// 内嵌的 web 播放器资源(engine/web/),让独立安装的二进制无需外部文件即可运行。
+/// `CARGO_MANIFEST_DIR` 保证从任意工作目录都能定位源码内的 web/(发布 verify 亦同)。
+/// `Embed` trait 需在作用域内才能调用 `iter()`/`get()`。
+use rust_embed::Embed;
 #[derive(rust_embed::RustEmbed)]
-#[folder = "../../web"]
+#[folder = "$CARGO_MANIFEST_DIR/../../web"]
 struct WebAssets;
 
 /// 把内嵌播放器落盘到 `out`(首次运行;已有则跳过)。
