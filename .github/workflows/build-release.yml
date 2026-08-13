@@ -10,7 +10,9 @@ name: build-release
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    # 版本 tag:带 v 前缀(v0.1.0)或纯版本号(0.1.0)均可。
+    # 纯版本号与 crates.io 版本一致,cargo-binstall 依赖它定位 release 资产。
+    tags: ["v*", "[0-9]*"]
   pull_request:
     branches: [main]
 
@@ -205,11 +207,12 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------
-  # 发布 GitHub Release(tag v* 时)
+  # 发布 GitHub Release(版本 tag 时)
   # ---------------------------------------------------------------
   release:
     name: Publish Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    # 版本 tag:带 v 前缀(v0.1.0)或纯版本号(0.1.0)均触发发布
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/0') || startsWith(github.ref, 'refs/tags/1') || startsWith(github.ref, 'refs/tags/2')
     needs: [lyco, termux, engine]
     runs-on: ubuntu-latest
     permissions:
