@@ -437,21 +437,64 @@ select:focus-visible { outline: none; border-color: var(--amber); }
 ::-webkit-scrollbar-thumb:hover { background: var(--amber-deep); }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ---------- 移动端 ---------- */
+/* ---------- 移动端(竖屏手机) ---------- */
 @media (max-width: 719px) {
-  .topbar { padding: 0 12px; gap: 9px; }
-  .brand-sub { display: none; }
-  .version { display: none; }
-  .btn-open { font-size: 0.76rem; padding: 6px 10px; }
-  .stage { max-height: 60vh; }
+  .topbar {
+    padding: 0 12px; gap: 9px;
+    height: auto; min-height: 54px;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .brand-sub, .version { display: none; }
+  .btn-open { font-size: 0.76rem; padding: 7px 10px; min-height: 38px; }
+  .layout { padding: 12px 12px 32px; gap: 12px; }
+  .stage {
+    max-height: calc(100dvh - 132px);
+    border-radius: 4px;
+  }
   #character { left: 2%; height: 70%; }
-  .dialogue-box { left: 2.5%; right: 2.5%; bottom: 3%; padding: 11px 14px; min-height: 88px; }
-  .dialogue-text { font-size: 0.94rem; }
-  .choice-btn { flex: 1 1 auto; }
-  .controls .btn { font-size: 0.68rem; padding: 5px 8px; }
+  .dialogue-box {
+    left: 2.5%; right: 2.5%; bottom: 3%;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    min-height: 96px;
+  }
+  .dialogue-text { font-size: clamp(0.95rem, 4.5vw, 1.08rem); min-height: 2.6em; }
+  .speaker { font-size: 0.9rem; }
+  .choice-btn { flex: 1 1 auto; min-height: 42px; font-size: 0.92rem; }
+  .controls { top: 10px; right: 10px; left: 10px; gap: 6px; }
+  .controls .btn { font-size: 0.7rem; padding: 8px 10px; min-height: 38px; }
   .gfx-corner { width: 16px; height: 16px; }
   .gfx-corner::before, .gfx-corner::after { width: 16px; height: 16px; }
-  .modal-box { padding: 14px 14px; }
+  .stage-strip { display: none; }
+  .modal-box {
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    width: 100%;
+  }
+  .save-slot { min-height: 46px; }
+  .card { padding: 13px 13px 12px; }
+  .title-logo { font-size: clamp(2.2rem, 12vw, 3.2rem); padding: 14px 12px; }
+  .title-menu .btn { min-width: 46vw; padding: 12px 14px; }
+}
+
+/* ---------- 超矮横屏(手机横持 / 小窗) ---------- */
+@media (max-height: 520px) and (orientation: landscape) {
+  .layout { padding: 10px 14px 24px; gap: 12px; }
+  .stage { max-height: calc(100dvh - 92px); }
+  .dialogue-box { min-height: 82px; padding-top: 9px; padding-bottom: 9px; }
+  .dialogue-text { font-size: 0.92rem; min-height: 2.2em; }
+  .controls .btn { min-height: 32px; padding: 5px 8px; }
+  .log { height: 130px; }
+  .xp3-list { max-height: 170px; }
+}
+
+/* ---------- 触屏设备:更大的命中区域(WCAG 44px 目标) ---------- */
+@media (hover: none) and (pointer: coarse) {
+  .btn { min-height: 44px; }
+  .btn-small { min-height: 40px; }
+  .save-slot { min-height: 48px; }
+  .bl-row { padding: 8px 12px; }
+  .xp3-list li { padding: 11px 9px; }
+  select { min-height: 44px; }
+  .setting input[type="range"] { min-height: 36px; }
 }
 
 /* ---------- 无障碍: 减弱动效 ---------- */
