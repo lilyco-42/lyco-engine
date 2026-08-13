@@ -26,17 +26,22 @@ const $ = (id) => {
 let scenes = [];          // 编译后的场景 [{ label, steps }]
 let currentRun = null;    // 当前播放进度 { steps, index }
 let scnName = null;
-let currentSource = null; // { kind:'backend', name } | { kind:'local', bytes }
+let currentSource = null; // { kind:'backend', name, overlay? } | { kind:'local', bytes }
+// 归档叠加:KiriKiri 引擎多归档按文件名(忽略目录)查找,后挂载优先。
+// 汉化补丁(patch.xp3)覆盖原版(data.xp3):剧本/脚本/SE 从 patch 取,其余回退原归档。
+const OVERLAY_PRIORITY = ["patch.xp3", "patch_data1080.xp3", "data.xp3", "data1080.xp3"];
 
 // 流式加载缓存:剧本/图像/音频 字节一次拉取,重放与跳回零网络
 const cache = new AssetCache();
-const cacheKey = (source, path, tag = "") => `${source.kind}:${source.name}:${path}${tag}`;
+// 缓存键含 overlay 签名:启用汉化叠加后路径解析不同,避免命中旧(日文)缓存
+const cacheKey = (source, path, tag = "") =>
+  `${source.kind}:${source.name}:${(source.overlays || []).join(",")}:${path}${tag}`;
 
 // ---------------- 设置 / 存档 / 历史 ----------------
 const SETTINGS_KEY = "yuzu-settings-v1";
 const SAVE_KEY = "yuzu-save-v1";
 const LAST_KEY = "yuzu-lastplayed-v1";
-const DEFAULT_SETTINGS = { bgm: 0.8, voice: 1.0, speed: 0.8 };
+const DEFAULT_SETTINGS = { bgm: 0.8, voice: 1.0, speed: 0.8, lang: "zh" };
 let settings = { ...DEFAULT_SETTINGS };
 try { settings = Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); } catch {}
 let autoMode = false, skipMode = false, autoTimer = null;
@@ -46,6 +51,94 @@ let currentBgmName = null;   // 当前播放 BGM 名称(读档恢复用)
 let currentScnBase = null;   // 当前剧本 base(不含 .scn / scn\ 前缀)
 let replaying = false;       // 回看点击回跳:重放期间不重复记入 backlog
 let lastDialogueLen = 0;     // 最近一句台词长度(自动推进间隔随文本长度自适应)
+let saveModalMode = null;    // 当前存档弹窗模式(true=存档 / false=读档 / null=未打开),供切语言时重渲染
+
+// ---------------- 界面语言(zh / en) ----------------
+// 说明:游戏台词来自数据包(无法即时翻译),此处负责界面文案。{1}/{2} 为占位符。
+const I18N = {
+  zh: {
+    open: "打开 .xp3 文件", sub: "WASM 引擎 · 完全复刻", newgame: "开始游戏", chart: "场景图", extra: "Extra(后日谈)",
+    auto: "自动", skip: "跳过", backlog: "回看", save: "存档", load: "读档", title: "标题",
+    loading: "加载演示数据…", hintAdvance: "点击舞台 / 空格 推进",
+    h_chapter: "场景图", h_scene: "场景", h_settings: "设置", h_archive: "解包(XP3)", h_log: "引擎日志",
+    play: "▶ 播放",
+    badge_flow: "原作流程", badge_backend: "后端懒加载",
+    set_lang: "语言", set_bgm: "BGM 音量", set_voice: "语音音量", set_speed: "自动间隔",
+    speed_fast: "快", speed_normal: "普通", speed_slow: "慢",
+    settings_persist: "设置自动保存到本地", reset: "重置设置为默认",
+    placeholder: "— 选择归档 —", backlog_title: "对话历史", close: "关闭",
+    hint_wait: "选择场景后可重播", hint_sel: "选择接下来的行动:", hint_choose: "点击选项继续",
+    end_chapter: "—— 本章结束 ——", end_hint: "选择场景 / 归档继续",
+    choose_lbl: "选择", scene_end: "—— 场景结束 ——", sel_none: "—— 选择分支数据未解出 ——",
+    save_save: "存档", save_load: "读档",
+    slot_fmt: "槽 {1} · {2} · {3} @ {4}", slot_empty: "槽 {1} · 空", slot_empty2: "槽 {1} · 空(无存档)", slot_none: "该槽尚无存档", step_tag: " · 步{1}",
+    cap_fmt: "{1} 条 · 点击台词行可回到该句",
+    scene_info: "{1} 步 · 其中台词 {2} 句", chapter_info: "选择章节/路线,从该处开始播放(原作场景图)",
+    files_fmt: "{1} · {2} 个文件", local_file: "(本地文件)",
+    cache_fmt: "缓存: {1} 内存命中 / {2} 持久命中 / {3} 拉取 · 省 {4} · {5} 项持久",
+    backlog_empty: "(暂无对话历史)", backlog_goto: "点击回到此处继续",
+    open_t: "选择本地的 .xp3 归档,在浏览器内解包并播放", stage_aria: "游戏舞台",
+    auto_t: "自动播放", skip_t: "快进(不停留台词)", backlog_t: "查看对话历史",
+    save_t: "保存进度", load_t: "读取存档", title_t: "回到标题",
+    chapter_aria: "选择章节/路线", scene_aria: "选择场景", archive_aria: "选择归档",
+  },
+  en: {
+    open: "Open .xp3", sub: "WASM Engine · Full Remake", newgame: "Start", chart: "Chart", extra: "Extra",
+    auto: "Auto", skip: "Skip", backlog: "Log", save: "Save", load: "Load", title: "Title",
+    loading: "Loading demo…", hintAdvance: "Click stage / Space to advance",
+    h_chapter: "Chapters", h_scene: "Scenes", h_settings: "Settings", h_archive: "Archive (XP3)", h_log: "Engine Log",
+    play: "▶ Play",
+    badge_flow: "Original Flow", badge_backend: "Lazy Backend",
+    set_lang: "Language", set_bgm: "BGM Volume", set_voice: "Voice Volume", set_speed: "Auto Interval",
+    speed_fast: "Fast", speed_normal: "Normal", speed_slow: "Slow",
+    settings_persist: "Settings auto-saved locally", reset: "Reset to Defaults",
+    placeholder: "— Select archive —", backlog_title: "Dialogue History", close: "Close",
+    hint_wait: "Pick a scene to replay", hint_sel: "Choose your action:", hint_choose: "Click an option",
+    end_chapter: "—— End of chapter ——", end_hint: "Pick a scene / archive to continue",
+    choose_lbl: "Choice", scene_end: "—— End of scene ——", sel_none: "—— No branch data ——",
+    save_save: "Save", save_load: "Load",
+    slot_fmt: "Slot {1} · {2} · {3} @ {4}", slot_empty: "Slot {1} · Empty", slot_empty2: "Slot {1} · Empty (none)", slot_none: "No save here", step_tag: " · step {1}",
+    cap_fmt: "{1} lines · click a line to return",
+    scene_info: "{1} steps · {2} dialogue lines", chapter_info: "Pick a chapter/route to start from (original flow)",
+    files_fmt: "{1} · {2} files", local_file: "(local file)",
+    cache_fmt: "Cache: {1} mem hits / {2} persist hits / {3} fetches · saved {4} · {5} persisted",
+    backlog_empty: "(no history yet)", backlog_goto: "Click to resume here",
+    open_t: "Open a local .xp3 archive to unpack and play in the browser", stage_aria: "Game stage",
+    auto_t: "Auto-play", skip_t: "Fast-forward (don't pause on lines)", backlog_t: "View dialogue history",
+    save_t: "Save progress", load_t: "Load save", title_t: "Back to title",
+    chapter_aria: "Pick a chapter/route", scene_aria: "Pick a scene", archive_aria: "Pick an archive",
+  },
+};
+let lang = (settings.lang === "en" || settings.lang === "zh") ? settings.lang : "zh";
+// 取当前语言文本;{1}/{2} 依次替换
+function t(k, ...args) {
+  let s = (I18N[lang] && I18N[lang][k]) ?? I18N.en[k] ?? k;
+  args.forEach((a, i) => { s = s.split(`{${i + 1}}`).join(String(a)); });
+  return s;
+}
+/// 应用界面语言:刷新所有 [data-i18n]、语言下拉、以及受语言影响的动态文案。
+function applyLang() {
+  document.documentElement.lang = lang;
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    // 跳过含子 [data-i18n] 的容器(如 <h2>场景图 <span class="badge" data-i18n>…</span></h2>),
+    // 只改叶子节点文本,避免 textContent 覆盖清掉内部徽章/图标
+    if (el.querySelector("[data-i18n]")) continue;
+    const v = t(el.getAttribute("data-i18n"));
+    if (v != null) el.textContent = v;
+    const tk = el.getAttribute("data-i18n-title");
+    if (tk) el.title = t(tk);
+    const ak = el.getAttribute("data-i18n-aria");
+    if (ak) el.setAttribute("aria-label", t(ak));
+  }
+  const ls = $("set-lang");
+  if (ls) ls.value = lang;
+  const stat = $("cache-stats");
+  if (stat) stat.textContent = cacheStatsLine();
+  updateSceneInfo();
+  const cap = $("backlog-cap");
+  if (cap && backlog.length) cap.textContent = t("cap_fmt", backlog.length);
+  if (!$("save-modal").hidden && saveModalMode != null) openSaveModal(saveModalMode);
+}
 
 // ---------------- 日志 ----------------
 function log(...parts) {
@@ -79,18 +172,86 @@ const apiJson = async (p) => (await api(p)).json();
 
 async function listEntries(source) {
   if (source.kind === "backend") {
+    const merged = new Map(); // 文件名(小写)→ 条目
+    const add = (entries) => { for (const f of entries) merged.set(f.name.toLowerCase(), f); };
+    // 基础归档先入,汉化补丁(patch)后入 → 同名时补丁覆盖
     const d = await apiJson(`/api/archives/${encodeURIComponent(source.name)}/files`);
-    return d.files;
+    add(d.files);
+    for (const overlay of source.overlays || []) {
+      try {
+        const od = await apiJson(`/api/archives/${encodeURIComponent(overlay)}/files`);
+        add(od.files);
+      } catch { /* 归档不存在则跳过 */ }
+    }
+    return [...merged.values()];
   }
   return JSON.parse(xp3_info(source.bytes)).files;
 }
+/// 后端读一个条目(含叠加):先按 overlay 归档按文件名匹配,再回退基础归档。
+/// KiriKiri 归档查找忽略目录(汉化补丁常把同名单条放根路径),mode 为 "file"|"img"。
+const archiveFileCache = new Map(); // 归档名 → Promise<[{name,size}]>
+
+/// 取归档条目清单(缓存):用于读取时的模糊回退。
+async function archiveFilesOf(archive) {
+  if (!archiveFileCache.has(archive)) {
+    archiveFileCache.set(
+      archive,
+      apiJson(`/api/archives/${encodeURIComponent(archive)}/files`)
+        .then((d) => d.files || [])
+        .catch(() => [])
+    );
+  }
+  return archiveFileCache.get(archive);
+}
+
+/// 在单归档内定位资源:精确(完整路径→文件名)→ 模糊。返回真实条目路径或 null。
+async function resolveInArchive(archive, path, mode) {
+  const enc = encodeURIComponent;
+  const tryExact = async (p) => {
+    try {
+      return await apiBytes(`/api/archives/${enc(archive)}/${mode}?path=${enc(p)}`);
+    } catch { return null; }
+  };
+  // 1) 完整路径 / 纯文件名精确
+  const name = path.split(/[\\/]/).pop();
+  for (const p of [path, name]) {
+    const b = await tryExact(p);
+    if (b) return b;
+  }
+  // 2) 模糊:在归档文件清单里按名称打分,取最优后读真实路径
+  const files = await archiveFilesOf(archive);
+  if (!files.length) return null;
+  let best = null;
+  for (const f of files) {
+    const m = fuzzyScore(name, f.name);
+    if (!m) continue;
+    if (!best || m.score < best.m.score || (m.score === best.m.score && m.dist < best.m.dist)) {
+      best = { f, m };
+    }
+  }
+  if (!best) return null;
+  const b = await tryExact(best.f.name);
+  return b;
+}
+
+async function backendBytes(source, path, mode) {
+  const name = path.split(/[\\/]/).pop(); // 纯文件名(忽略目录)
+  for (const overlay of source.overlays || []) {
+    const b = await resolveInArchive(overlay, name, mode);
+    if (b) return b;
+  }
+  const base = await resolveInArchive(source.name, path, mode);
+  if (base) return base;
+  throw new Error(`归档 ${source.name} 内未找到 ${path}(含模糊匹配)`);
+}
+
 async function readEntry(source, path) {
   const key = cacheKey(source, path);
   const hit = await cache.getPersist(key);
   if (hit) { updateCacheStats(); return hit; }
   let bytes;
   if (source.kind === "backend") {
-    bytes = await apiBytes(`/api/archives/${encodeURIComponent(source.name)}/file?path=${encodeURIComponent(path)}`);
+    bytes = await backendBytes(source, path, "file");
   } else {
     bytes = xp3_read(source.bytes, path);
   }
@@ -106,7 +267,7 @@ async function readImage(source, path) {
   if (hit) { updateCacheStats(); return hit; }
   let bytes;
   if (source.kind === "backend") {
-    bytes = await apiBytes(`/api/archives/${encodeURIComponent(source.name)}/img?path=${encodeURIComponent(path)}`);
+    bytes = await backendBytes(source, path, "img");
   } else {
     const raw = xp3_read(source.bytes, path);
     bytes = isTlgBytes(raw) ? decode_tlg_png(raw) : raw;
@@ -116,11 +277,20 @@ async function readImage(source, path) {
   return bytes;
 }
 
+let lastCacheStats = null; // 最近一次缓存统计快照(供 applyLang 同步取用,无需重复 await)
+
+/// 本地化缓存统计行;无快照时返回占位。
+function cacheStatsLine() {
+  const s = lastCacheStats;
+  if (!s) return t("cache_fmt", 0, 0, 0, "0 B", 0);
+  return t("cache_fmt", s.hits, s.persistHits, s.misses, fmtSize(s.saved), s.persisted);
+}
+
 async function updateCacheStats() {
   const el = $("cache-stats");
   if (!el) return;
-  const s = await cache.stats();
-  el.textContent = `流式缓存: ${s.hits} 内存命中 / ${s.persistHits} 持久命中 / ${s.misses} 拉取 · 省 ${fmtSize(s.saved)} · ${s.persisted} 项持久`;
+  lastCacheStats = await cache.stats();
+  el.textContent = cacheStatsLine();
 }
 
 /// 热更新提示横幅,10s 自动隐藏。
@@ -219,7 +389,10 @@ async function main() {
     const name = ev.target.value;
     if (!name) return;
     try {
-      await openSource({ kind: "backend", name });
+      const { archives } = await apiJson("/api/archives");
+      const names = new Set(archives.map((a) => a.name));
+      const overlays = OVERLAY_PRIORITY.filter((n) => n !== name && names.has(n));
+      await openSource({ kind: "backend", name, overlays });
     } catch (e) {
       log("[错误] 打开归档失败:", e.message);
     }
@@ -259,6 +432,19 @@ async function main() {
     if (label) playScene(label);
   });
 
+  // 归档文件模糊搜索:输入即过滤列表(忽略大小写/全半角/部分匹配)
+  const filter = $("archive-filter");
+  if (filter) {
+    let timer = null;
+    filter.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        archiveFilterText = filter.value;
+        if (currentSource) renderArchiveFiles(currentSource);
+      }, 120);
+    });
+  }
+
   // 播放控制:自动 / 跳过 / 回看 / 存档 / 读档 / 标题
   $("ctl-auto").addEventListener("click", () => {
     autoMode = !autoMode;
@@ -297,6 +483,7 @@ async function main() {
     });
   }
   bindSettings();
+  applyLang(); // 启动即按已保存的语言刷新界面
 }
 
 // ---------------- 后端:归档列表 ----------------
@@ -316,19 +503,25 @@ async function loadBackendArchives() {
   // 优先打开 data*.xp3(剧本),否则第一个
   const pick = archives.find((a) => /^data/.test(a.name)) || archives[0];
   sel.value = pick.name;
-  await openSource({ kind: "backend", name: pick.name });
+  const names = new Set(archives.map((a) => a.name));
+  // 汉化叠加:patch.xp3 覆盖 data.xp3(剧本/脚本/SE),仅挂载实际存在的归档
+  const overlays = OVERLAY_PRIORITY.filter((n) => n !== pick.name && names.has(n));
+  await openSource({ kind: "backend", name: pick.name, overlays });
 }
 
 // ---------------- 打开数据源 ----------------
-async function openSource(source) {
-  currentSource = source;
-  const files = await listEntries(source);
-  const label = source.kind === "backend" ? source.name : "(本地文件)";
-  $("xp3-summary").textContent = `${label} · ${files.length} 个文件`;
+let archiveAllFiles = [];   // 当前归档全量条目(供搜索过滤)
+let archiveFilterText = ""; // 当前过滤关键词
 
+/// 渲染文件列表(应用当前过滤)。
+function renderArchiveFiles(source) {
   const ul = $("xp3-files");
   ul.textContent = "";
-  for (const f of files) {
+  const q = archiveFilterText.trim();
+  let shown = 0;
+  for (const f of archiveAllFiles) {
+    if (q && fuzzyScore(q, f.name) === null && !normName(f.name).includes(normName(q))) continue;
+    shown++;
     const li = document.createElement("li");
     li.tabIndex = 0;
     li.setAttribute("role", "button");
@@ -348,11 +541,25 @@ async function openSource(source) {
     });
     ul.appendChild(li);
   }
-  log(`解包 ${label}:${files.length} 个文件`);
+  const cap = $("xp3-summary");
+  if (cap) {
+    cap.textContent = q
+      ? `${archiveAllFiles.length} → ${shown}`
+      : t("files_fmt", source.kind === "backend" ? source.name : t("local_file"), archiveAllFiles.length);
+  }
+}
+
+async function openSource(source) {
+  currentSource = source;
+  archiveAllFiles = await listEntries(source);
+  archiveFilterText = "";
+  const filter = $("archive-filter");
+  if (filter) filter.value = "";
+  renderArchiveFiles(source);
 
   // 自动播放 .scn,展示前两个图片(单资源失败不中止整体打开)。
   // 注意:不自动开演 —— 游戏只从标题屏"开始游戏"进入(autoStart=false)。
-  const scn = files.find((f) => f.name.endsWith(".scn"));
+  const scn = archiveAllFiles.find((f) => f.name.endsWith(".scn"));
   if (scn) {
     try {
       const bytes = await readEntry(source, scn.name);
@@ -366,7 +573,7 @@ async function openSource(source) {
   } else {
     log("[提示] 归档中没有 .scn 剧本文件");
   }
-  for (const f of files.filter((x) => isImageName(x.name)).slice(0, 2)) {
+  for (const f of archiveAllFiles.filter((x) => isImageName(x.name)).slice(0, 2)) {
     try {
       const bytes = await readImage(source, f.name);
       const kind = isCharaName(f.name) ? "chara" : "bg";
@@ -459,7 +666,7 @@ function updateSceneInfo() {
   const s = scenes.find((x) => x.label === label);
   const dialogues = s ? s.steps.filter((st) => st.type === "dialogue").length : 0;
   $("scene-info").textContent = s
-    ? `${s.steps.length} 步 · 其中台词 ${dialogues} 句`
+    ? t("scene_info", s.steps.length, dialogues)
     : "";
 }
 
@@ -499,7 +706,7 @@ function advanceEngine() {
     if (id !== runId) return; // 场景被跳转/切换接管
     if (e.type === "dialogue") {
       if (autoMode || skipMode) { scheduleNext(); return; }
-      $("hint").textContent = "点击舞台 / 空格 推进";
+      $("hint").textContent = t("hintAdvance");
       return;
     }
   }
@@ -511,16 +718,24 @@ function advanceEngine() {
     if (jump) { handleJump(jump.storage, jump.target); return; }
   }
   stopAuto();
-  $("dialogue-text").textContent = "—— 场景结束 ——";
+  $("dialogue-text").textContent = t("scene_end");
   $("speaker").textContent = "";
-  $("hint").textContent = "选择场景后可重播";
+  $("hint").textContent = t("hint_wait");
 }
 
 async function applyEffect(e, effectIndex) {
   try {
     switch (e.type) {
       case "dialogue":
-        $("speaker").textContent = e.character || "";
+        // 说话人文本 + 语音指示(#voice-ind):textContent 赋值会清掉子节点,
+        // 先摘出 voice-ind 再重设文本并放回,避免指示图标从 DOM 消失。
+        {
+          const sp = $("speaker");
+          const vInd = sp.querySelector("#voice-ind");
+          sp.textContent = e.character || "";
+          if (vInd) sp.appendChild(vInd);
+          else sp.insertAdjacentHTML("beforeend", `<span id="voice-ind" hidden>🔊</span>`);
+        }
         $("dialogue-text").textContent = e.text;
         // 回看回跳时不重复记入 backlog(该句已存在)
         if (!replaying) {
@@ -563,8 +778,8 @@ async function handleJump(storage, target) {
     // 游戏终点(回标题 / 场景流结束)
     stopAuto();
     log("[终点] 返回标题");
-    $("dialogue-text").textContent = "—— 本章结束 ——";
-    $("hint").textContent = "选择场景 / 归档继续";
+    $("dialogue-text").textContent = t("end_chapter");
+    $("hint").textContent = t("end_hint");
     return;
   }
   const storageBase = storage ? storage.replace(/\.scn$/i, "") : "";
@@ -663,12 +878,24 @@ async function buildIdToFile() {
 }
 let idToFile = null;
 
+/// 解码 KiriKiri 文本文件:scenario 编码(fe fe 头)走 wasm;UTF-16 LE(含 BOM fffe)直接解。
+/// 汉化补丁(patch.xp3)里的 tjs/scn 常是已解码的 UTF-16 明文,需绕过 scenario 解码。
+function decodeKiriText(bytes) {
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xfe) {
+    return decode_scenario(bytes);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder("utf-16le").decode(bytes);
+  }
+  return decode_scenario(bytes);
+}
+
 async function ensureSceneChart() {
   if (sceneChartReady || currentSource?.kind !== "backend") return;
   sceneChartReady = true;
   try {
     const raw = await readEntry(currentSource, "main\\scnchartdata.tjs");
-    const { sel, flow, caps } = parseSceneChart(decode_scenario(raw));
+    const { sel, flow, caps } = parseSceneChart(decodeKiriText(raw));
     Object.assign(sceneChart, sel);
     Object.assign(flowMap, flow);
     chapters.length = 0; chapters.push(...caps);
@@ -699,7 +926,7 @@ function populateChapters() {
     sel.appendChild(opt);
   }
   if (chapters.length) {
-    $("chapter-info").textContent = "选择章节/路线,从该处开始播放(原作场景图)";
+    $("chapter-info").textContent = t("chapter_info");
     sel.onchange = async () => await playChapter(sel.value);
   }
 }
@@ -760,18 +987,18 @@ async function showChoices(selScene) {
   stopAuto();
   choosing = true; // 等待选择:期间 advanceEngine 不跟随 sel 的跳转
   const branches = await findBranches(selScene);
-  $("speaker").textContent = "选择";
+  $("speaker").textContent = t("choose_lbl");
   const box = $("choices");
   box.textContent = "";
   if (!branches.length) {
     choosing = false;
-    $("dialogue-text").textContent = "—— 选择分支数据未解出 ——";
-    $("hint").textContent = "选择场景后可重播";
+    $("dialogue-text").textContent = t("sel_none");
+    $("hint").textContent = t("hint_wait");
     return;
   }
   // 选择提示:优先用分支场景首个有台词的副标题
-  $("dialogue-text").textContent = "选择接下来的行动:";
-  $("hint").textContent = "点击选项继续";
+  $("dialogue-text").textContent = t("hint_sel");
+  $("hint").textContent = t("hint_choose");
   branches.forEach((b, i) => {
     const first = b.steps.find((st) => st.type === "dialogue");
     // 选项标签:分支首句台词(真实选项原文仅在未随游戏的 .ks 源码中)
@@ -785,7 +1012,7 @@ async function showChoices(selScene) {
       ev.stopPropagation();
       ev.preventDefault();
       choosing = false;
-      backlog.push({ who: "选择", text: btn.textContent.replace(/^\d+\.\s*/, ""), scene: currentSceneLabel, ts: Date.now() });
+      backlog.push({ who: t("choose_lbl"), text: btn.textContent.replace(/^\d+\.\s*/, ""), scene: currentSceneLabel, ts: Date.now() });
       if (backlog.length > 500) backlog.shift();
       playScene(b.label);
     });
@@ -800,6 +1027,70 @@ async function showChoices(selScene) {
 const IMAGE_ARCHIVES = ["bgimage1080.xp3", "fgimage1080.xp3", "patch_data1080.xp3"];
 const assetIndex = new Map(); // 名称(去扩展名,小写) → { archive, path, size }
 let assetIndexReady = false;
+
+// ---------------- 资源名称模糊匹配 ----------------
+// 剧本引用的资源名与归档文件名常有差异(变体后缀 `みづは`→`みづはa`、目录前缀、
+// 大小写、全/半角空白)。匹配按优先级:完全相等 → 忽略扩展名/目录后相等 →
+// 前缀(引用是文件名前缀) → 包含 → 编辑距离小。返回 { entry, score, dist }。
+const normName = (s) =>
+  (s || "")
+    .replace(/\\/g, "/")
+    .replace(/^.*\//, "")                    // 去目录
+    .replace(/\.(png|webp|jpg|jpeg|gif|bmp|tlg|ogg|opus|wav|mp3|scn|ks)$/i, "") // 去扩展名
+    .replace(/[\s　]/g, "")              // 去空白(含全角空格)
+    .toLowerCase();
+
+/// Levenshtein 编辑距离(限制 max,超限即返回 max+1,避免长串全量计算)。
+function editDistance(a, b, max = 3) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = new Array(b.length + 1).fill(0).map((_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = cur[0];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      if (cur[j] < rowMin) rowMin = cur[j];
+    }
+    if (rowMin > max) return max + 1; // 早停:当前行最小已超限
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/// 对资源名打分:score 越小越优;无匹配返回 null。
+/// 0=完全相等,1=忽略目录/扩展名后相等,2=引用是文件名前缀,3=文件名含引用,4=编辑距离≤max。
+function fuzzyScore(query, name) {
+  if (!query || !name) return null;
+  if (query === name) return { score: 0, dist: 0 };
+  const q = normName(query), n = normName(name);
+  if (q === n) return { score: 1, dist: 0 };
+  if (n.startsWith(q)) return { score: 2, dist: 0 };
+  if (n.includes(q) && q.length >= 2) return { score: 3, dist: 0 };
+  const dist = editDistance(q, n);
+  if (dist <= 2) return { score: 4, dist };
+  return null;
+}
+
+/// 在 assetIndex 中模糊查找:先精确,再按 (score, 名称长度差) 取最优。
+function fuzzyLookupAsset(query) {
+  if (!query) return null;
+  const exact = assetIndex.get(query.toLowerCase()) || assetIndex.get(normName(query));
+  if (exact) return exact;
+  let best = null;
+  for (const [key, v] of assetIndex) {
+    const m = fuzzyScore(query, key);
+    if (!m) continue;
+    const lenDiff = Math.abs(normName(query).length - normName(key).length);
+    if (!best || m.score < best.m.score || (m.score === best.m.score && lenDiff < best.lenDiff)) {
+      best = { v, m, lenDiff };
+    }
+  }
+  return best ? best.v : null;
+}
 
 async function ensureAssetIndex() {
   if (assetIndexReady || currentSource?.kind !== "backend") return;
@@ -821,7 +1112,7 @@ async function ensureAssetIndex() {
 
 async function lookupAsset(asset) {
   await ensureAssetIndex();
-  return assetIndex.get(asset.toLowerCase()) || null;
+  return fuzzyLookupAsset(asset);
 }
 
 async function handleCommand(value) {
@@ -903,7 +1194,7 @@ async function getStandTable(char, bodySet) {
   if (standTables.has(key)) return standTables.get(key);
   const bytes = await readEntry({ kind: "backend", name: "fgimage1080.xp3" }, `${bodySet}.txt`);
   let text = null;
-  try { text = decode_scenario(bytes); } catch {}
+  try { text = decodeKiriText(bytes); } catch {}
   if (!text) text = new TextDecoder("utf-8").decode(bytes);
   const rows = [];
   const lines = text.split("\n");
@@ -945,7 +1236,7 @@ async function getFaceIndexMap(bodySet) {
     // info.txt 在 data.xp3 的 fgimage\ 下(如 fgimage\芦花a_info.txt)
     const bytes = await readEntry({ kind: "backend", name: "data.xp3" }, `fgimage\\${bodySet}_info.txt`);
     let text = null;
-    try { text = decode_scenario(bytes); } catch {}
+    try { text = decodeKiriText(bytes); } catch {}
     if (!text) text = new TextDecoder("utf-8").decode(bytes);
     for (const line of text.split("\n")) {
       const p = line.split("\t");
@@ -1175,6 +1466,8 @@ function bindSettings() {
     bgm.value = settings.bgm * 100;
     voice.value = settings.voice * 100;
     speed.value = String(settings.speed);
+    const ls = $("set-lang");
+    if (ls) ls.value = lang;
   };
   const apply = () => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -1185,11 +1478,20 @@ function bindSettings() {
   bgm.addEventListener("input", () => { settings.bgm = bgm.value / 100; apply(); });
   voice.addEventListener("input", () => { settings.voice = voice.value / 100; apply(); });
   speed.addEventListener("change", () => { settings.speed = parseFloat(speed.value); apply(); });
+  const langSel = $("set-lang");
+  if (langSel) langSel.addEventListener("change", () => {
+    settings.lang = langSel.value;
+    lang = langSel.value === "en" ? "en" : "zh";
+    apply();
+    applyLang();
+  });
   const reset = $("set-reset");
   if (reset) reset.addEventListener("click", () => {
     settings = { ...DEFAULT_SETTINGS };
+    lang = settings.lang;
     sync();
     apply();
+    applyLang();
     log("[设置] 已恢复默认");
   });
   apply();
@@ -1200,14 +1502,14 @@ function openBacklog() {
   const list = $("backlog-list");
   list.textContent = "";
   if (!backlog.length) {
-    list.textContent = "(暂无对话历史)";
+    list.textContent = t("backlog_empty");
   }
   for (const b of backlog.slice().reverse()) {
     const row = document.createElement("div");
     row.className = "bl-row";
     row.setAttribute("role", "button");
     row.tabIndex = 0;
-    row.title = b.file && b.effectIndex != null ? "点击回到此处继续" : "";
+    row.title = b.file && b.effectIndex != null ? t("backlog_goto") : "";
     const who = document.createElement("div");
     who.className = "bl-who";
     who.textContent = (b.who || "…") + (b.scene ? ` · ${b.scene}` : "");
@@ -1231,7 +1533,7 @@ function openBacklog() {
   list.scrollTop = list.scrollHeight;
   const cap = $("backlog-cap");
   if (cap) cap.textContent = backlog.length
-    ? `${backlog.length} 条 · 点击台词行可回到该句`
+    ? t("cap_fmt", backlog.length)
     : "";
 }
 
@@ -1264,7 +1566,7 @@ async function replayToDialogue(file, label, effectIndex) {
       replaying = false;
     }
     log(`[回看] 回到 ${label} 第 ${idx + 1}/${effs.length} 步`);
-    $("hint").textContent = "点击舞台 / 空格 推进";
+    $("hint").textContent = t("hintAdvance");
     if (autoMode || skipMode) scheduleNext(); else stopAuto();
   } catch (e) {
     log(`[回看] 回跳失败: ${e?.message || e}`);
@@ -1273,7 +1575,8 @@ async function replayToDialogue(file, label, effectIndex) {
 
 // ---------------- 存档 / 读档 ----------------
 function openSaveModal(isSave) {
-  $("save-title").textContent = isSave ? "存档" : "读档";
+  saveModalMode = isSave; // 记录当前模式,供切语言时按同模式重渲染
+  $("save-title").textContent = isSave ? t("save_save") : t("save_load");
   const slots = $("save-slots");
   slots.textContent = "";
   const all = JSON.parse(localStorage.getItem(SAVE_KEY) || "[]");
@@ -1282,16 +1585,16 @@ function openSaveModal(isSave) {
     const btn = document.createElement("button");
     btn.className = "save-slot";
     btn.textContent = s
-      ? `槽 ${i + 1} · ${new Date(s.ts).toLocaleString()} · ${(s.scn || "").replace(/.*[\\/]/, "").slice(0, 20)} @ ${s.label}`
-      : `槽 ${i + 1} · 空`;
-    if (s && s.effectIndex != null) btn.textContent += ` · 步${s.effectIndex}`;
+      ? t("slot_fmt", i + 1, new Date(s.ts).toLocaleString(), (s.scn || "").replace(/.*[\\/]/, "").slice(0, 20), s.label)
+      : t("slot_empty", i + 1);
+    if (s && s.effectIndex != null) btn.textContent += t("step_tag", s.effectIndex);
     if (s && s.bgm) btn.textContent += " ♪";
-    btn.title = s ? `${s.scn} → ${s.label}` : "尚未存档";
+    btn.title = s ? `${s.scn} → ${s.label}` : t("slot_none");
     if (!isSave && !s) {
       // 读档模式:空槽置灰,避免点了没反应又无提示
       btn.disabled = true;
-      btn.textContent = `槽 ${i + 1} · 空(无存档)`;
-      btn.title = "该槽尚无存档";
+      btn.textContent = t("slot_empty2", i + 1);
+      btn.title = t("slot_none");
     }
     if (!(!isSave && !s)) btn.addEventListener("click", async () => {
       if (isSave) {

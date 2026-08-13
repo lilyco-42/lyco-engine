@@ -13,7 +13,7 @@
     <h1>yuzu-web <span class="brand-sub">WASM·VN</span></h1>
     <span class="version" id="engine-version" aria-live="polite">加载中…</span>
     <span class="spacer"></span>
-    <label class="btn btn-open" for="file-input" title="选择本地的 .xp3 归档,在浏览器内解包并播放">
+    <label class="btn btn-open" for="file-input" title="选择本地的 .xp3 归档,在浏览器内解包并播放" data-i18n="open" data-i18n-title="open_t">
       打开 .xp3 文件
     </label>
     <input type="file" id="file-input" accept=".xp3" hidden>
@@ -26,31 +26,31 @@
     <!-- 标题屏(原作流程:Logo → 标题 → 开始游戏) -->
     <div class="title-screen" id="title-screen">
       <h2 class="title-logo">千恋万花</h2>
-      <p class="title-sub">WASM 引擎 · 完全复刻</p>
+      <p class="title-sub" data-i18n="sub">WASM 引擎 · 完全复刻</p>
       <div class="title-menu">
-        <button id="title-newgame" class="btn btn-primary">开始游戏</button>
-        <button id="title-chart" class="btn">场景图</button>
-        <button id="title-extra" class="btn">Extra(后日谈)</button>
+        <button id="title-newgame" class="btn btn-primary" data-i18n="newgame">开始游戏</button>
+        <button id="title-chart" class="btn" data-i18n="chart">场景图</button>
+        <button id="title-extra" class="btn" data-i18n="extra">Extra(后日谈)</button>
       </div>
     </div>
     <!-- 舞台:背景 + 对话框 -->
-    <section class="stage" id="stage" aria-label="游戏舞台">
+    <section class="stage" id="stage" aria-label="游戏舞台" data-i18n-aria="stage_aria">
       <img id="background" alt="背景" hidden>
       <img id="character" alt="角色" hidden>
-      <div class="stage-empty" id="stage-empty">加载演示数据…</div>
+      <div class="stage-empty" id="stage-empty" data-i18n="loading">加载演示数据…</div>
       <div class="controls" id="controls">
-        <button id="ctl-auto" class="btn btn-small" title="自动播放">自动</button>
-        <button id="ctl-skip" class="btn btn-small" title="快进(不停留台词)">跳过</button>
-        <button id="ctl-backlog" class="btn btn-small" title="查看对话历史">回看</button>
-        <button id="ctl-save" class="btn btn-small" title="保存进度">存档</button>
-        <button id="ctl-load" class="btn btn-small" title="读取存档">读档</button>
-        <button id="ctl-title" class="btn btn-small" title="回到标题">标题</button>
+        <button id="ctl-auto" class="btn btn-small" title="自动播放" data-i18n="auto" data-i18n-title="auto_t">自动</button>
+        <button id="ctl-skip" class="btn btn-small" title="快进(不停留台词)" data-i18n="skip" data-i18n-title="skip_t">跳过</button>
+        <button id="ctl-backlog" class="btn btn-small" title="查看对话历史" data-i18n="backlog" data-i18n-title="backlog_t">回看</button>
+        <button id="ctl-save" class="btn btn-small" title="保存进度" data-i18n="save" data-i18n-title="save_t">存档</button>
+        <button id="ctl-load" class="btn btn-small" title="读取存档" data-i18n="load" data-i18n-title="load_t">读档</button>
+        <button id="ctl-title" class="btn btn-small" title="回到标题" data-i18n="title" data-i18n-title="title_t">标题</button>
       </div>
       <div class="dialogue-box" id="dialogue-box" hidden>
         <div class="speaker" id="speaker"><span id="voice-ind" hidden>🔊</span></div>
         <div class="dialogue-text" id="dialogue-text"></div>
         <div id="choices"></div>
-        <div class="hint" id="hint">点击舞台 / 空格 推进</div>
+        <div class="hint" id="hint" data-i18n="hintAdvance">点击舞台 / 空格 推进</div>
       </div>
       <!-- 装饰:舞台四角支架(明日方舟式硬件边框) -->
       <span class="gfx-corner tl" aria-hidden="true"></span>
@@ -65,53 +65,62 @@
     <!-- 侧栏:场景 / 解包 / 日志 -->
     <aside class="panel">
       <section class="card">
-        <h2>场景图 <span class="badge">原作流程</span></h2>
+        <h2><span data-i18n="h_chapter">场景图</span> <span class="badge" data-i18n="badge_flow">原作流程</span></h2>
         <div class="row">
-          <select id="chapter-select" aria-label="选择章节/路线"></select>
+          <select id="chapter-select" aria-label="选择章节/路线" data-i18n-aria="chapter_aria"></select>
         </div>
         <p class="meta" id="chapter-info"></p>
       </section>
 
       <section class="card">
-        <h2>场景</h2>
+        <h2 data-i18n="h_scene">场景</h2>
         <div class="row">
-          <select id="scene-select" aria-label="选择场景"></select>
-          <button id="play-btn" class="btn btn-primary">▶ 播放</button>
+          <select id="scene-select" aria-label="选择场景" data-i18n-aria="scene_aria"></select>
+          <button id="play-btn" class="btn btn-primary" data-i18n="play">▶ 播放</button>
         </div>
         <p class="meta" id="scene-info"></p>
       </section>
 
       <section class="card">
-        <h2>设置</h2>
-        <label class="setting">BGM 音量
-          <input type="range" id="set-bgm" min="0" max="100" value="80">
-        </label>
-        <label class="setting">语音音量
-          <input type="range" id="set-voice" min="0" max="100" value="100">
-        </label>
-        <label class="setting">自动间隔
-          <select id="set-speed">
-            <option value="0.5">快</option>
-            <option value="0.8">普通</option>
-            <option value="1.2" selected>慢</option>
+        <h2 data-i18n="h_settings">设置</h2>
+        <label class="setting"><span data-i18n="set_lang">语言</span>
+          <select id="set-lang">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
           </select>
         </label>
-        <p class="meta">设置自动保存到本地</p>
-        <button id="set-reset" class="btn btn-small">重置设置为默认</button>
+        <label class="setting"><span data-i18n="set_bgm">BGM 音量</span>
+          <input type="range" id="set-bgm" min="0" max="100" value="80">
+        </label>
+        <label class="setting"><span data-i18n="set_voice">语音音量</span>
+          <input type="range" id="set-voice" min="0" max="100" value="100">
+        </label>
+        <label class="setting"><span data-i18n="set_speed">自动间隔</span>
+          <select id="set-speed">
+            <option value="0.5" data-i18n="speed_fast">快</option>
+            <option value="0.8" data-i18n="speed_normal">普通</option>
+            <option value="1.2" selected data-i18n="speed_slow">慢</option>
+          </select>
+        </label>
+        <p class="meta" data-i18n="settings_persist">设置自动保存到本地</p>
+        <button id="set-reset" class="btn btn-small" data-i18n="reset">重置设置为默认</button>
       </section>
 
       <section class="card">
-        <h2>解包(XP3) <span class="badge">后端懒加载</span></h2>
+        <h2><span data-i18n="h_archive">解包(XP3)</span> <span class="badge" data-i18n="badge_backend">后端懒加载</span></h2>
         <div class="row">
-          <select id="archive-select" aria-label="选择归档"><option value="">— 选择归档 —</option></select>
+          <select id="archive-select" aria-label="选择归档" data-i18n-aria="archive_aria"><option value="" data-i18n="placeholder">— 选择归档 —</option></select>
+        </div>
+        <div class="row">
+          <input type="search" id="archive-filter" placeholder="搜索文件…" aria-label="搜索归档内文件">
         </div>
         <p class="meta" id="xp3-summary"></p>
-        <p class="meta" id="cache-stats">流式缓存: -</p>
+        <p class="meta" id="cache-stats"></p>
         <ul class="xp3-list" id="xp3-files"></ul>
       </section>
 
       <section class="card">
-        <h2>引擎日志</h2>
+        <h2 data-i18n="h_log">引擎日志</h2>
         <pre class="log" id="log"></pre>
       </section>
     </aside>
@@ -120,11 +129,11 @@
   <!-- 回看历史(对话记录) -->
   <div class="modal" id="backlog-modal" hidden>
     <div class="modal-box">
-      <h2>对话历史</h2>
+      <h2 data-i18n="backlog_title">对话历史</h2>
       <p class="meta" id="backlog-cap"></p>
       <div class="backlog-list" id="backlog-list"></div>
       <div class="modal-actions">
-        <button id="backlog-close" class="btn">关闭</button>
+        <button id="backlog-close" class="btn" data-i18n="close">关闭</button>
       </div>
     </div>
   </div>
@@ -135,7 +144,7 @@
       <h2 id="save-title">存档</h2>
       <div class="save-slots" id="save-slots"></div>
       <div class="modal-actions">
-        <button id="save-close" class="btn">关闭</button>
+        <button id="save-close" class="btn" data-i18n="close">关闭</button>
       </div>
     </div>
   </div>
