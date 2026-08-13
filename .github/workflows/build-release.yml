@@ -1,0 +1,238 @@
+name: build-release
+
+# 跨平台构建 lyco CLI(纯 Rust 静态) + yuzu 引擎(主流平台) + WASM 组件(web 播放器)。
+# 主流平台(Windows/macOS/Linux) + Termux(Android arm64)。
+#
+# 触发:
+#   - push / PR 到 main:构建验证
+#   - tag v*:构建全部平台产物并发布 GitHub Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ---------------------------------------------------------------
+  # lyco —— 纯 Rust 静态 CLI,主流平台 + Termux
+  # ---------------------------------------------------------------
+  lyco:
+    name: lyco (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl        # Linux x86_64 静态
+            artifact: lyco-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl        # Linux arm64 静态(Termux 亦可用)
+            artifact: lyco-linux-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc            # Windows
+            artifact: lyco-windows-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin              # macOS Apple Silicon
+            artifact: lyco-macos-aarch64
+          - os: macos-15-intel
+            target: x86_64-apple-darwin               # macOS Intel
+            artifact: lyco-macos-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (${{ matrix.target }})
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Linux musl 需交叉编译;用 cross(musl 静态链接,无需系统 libc)
+      - name: Install cross (musl targets)
+        if: contains(matrix.target, 'musl')
+        uses: taiki-e/install-action@cross
+
+      - name: Build (native)
+        if: ${{ !contains(matrix.target, 'musl') }}
+        run: cargo build --release --locked
+
+      - name: Build (cross / musl)
+        if: contains(matrix.target, 'musl')
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          set -e
+          BIN=$( [ "${{ matrix.os }}" = "windows-latest" ] && echo "lyco.exe" || echo "lyco" )
+          SRC="target/${{ matrix.target }}/release/$BIN"
+          [ -f "$SRC" ] || SRC="target/release/$BIN"
+          mkdir -p dist
+          cp "$SRC" "dist/${{ matrix.artifact }}$( [ "${{ matrix.os }}" = "windows-latest" ] && echo .exe || echo '' )"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------
+  # Termux(Android arm64)—— 单独:目标 aarch64-linux-android
+  # ---------------------------------------------------------------
+  termux:
+    name: lyco (termux / aarch64-linux-android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust + Android target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install Android NDK
+        uses: warchant/action-setup-android@v1
+        with:
+          ndk-version: "25.2.9519653"
+
+      - name: Install cargo-ndk
+        uses: taiki-e/install-action@cargo-ndk
+
+      - name: Build (aarch64-linux-android)
+        run: |
+          # warchant/action-setup-android 设置 ANDROID_NDK_HOME;兜底探测
+          if [ -z "${ANDROID_NDK_HOME:-}" ]; then
+            for p in "$ANDROID_HOME/ndk/25.2.9519653" "$ANDROID_SDK_ROOT/ndk/25.2.9519653" /usr/local/lib/android/sdk/ndk/25.2.9519653; do
+              [ -d "$p" ] && export ANDROID_NDK_HOME="$p" && break
+            done
+          fi
+          echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}"
+          test -n "${ANDROID_NDK_HOME:-}" || { echo "::error::NDK 未找到"; exit 1; }
+          cargo ndk -t arm64-v8a build --release --locked
+
+      - name: Locate binary
+        shell: bash
+        run: |
+          set -e
+          BIN=$(find target -type f -name lyco | head -1)
+          mkdir -p dist
+          cp "$BIN" dist/lyco-termux-arm64
+          file dist/lyco-termux-arm64 || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lyco-termux-arm64
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------
+  # yuzu 引擎 —— 主流平台(yuzu-cli + yuzu-server)
+  # ---------------------------------------------------------------
+  engine:
+    name: engine (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: engine-linux-x86_64
+          - os: windows-latest
+            artifact: engine-windows-x86_64
+          - os: macos-latest
+            artifact: engine-macos-aarch64
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build workspace (release)
+        run: cargo build --release --locked -p yuzu-cli -p yuzu-server
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          set -e
+          mkdir -p ../dist
+          EXT=""; [ "${{ matrix.os }}" = "windows-latest" ] && EXT=".exe"
+          for b in yuzu-cli yuzu-server; do
+            cp "target/release/$b$EXT" "../dist/$b$EXT" || echo "::warning::$b not found"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------
+  # WASM 组件(web 播放器引擎绑定)
+  # ---------------------------------------------------------------
+  wasm:
+    name: wasm (yuzu-wasm)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust + wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli 0.2.127
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+
+      - name: Build yuzu-wasm
+        run: cargo build -p yuzu-wasm --target wasm32-unknown-unknown --release
+
+      - name: Generate JS bindings (web + node)
+        run: |
+          wasm-bindgen target/wasm32-unknown-unknown/release/yuzu_wasm.wasm \
+            --out-dir web/pkg --target web --no-typescript
+          wasm-bindgen target/wasm32-unknown-unknown/release/yuzu_wasm.wasm \
+            --out-dir web/pkg-node --target nodejs --no-typescript
+
+      - name: Upload wasm pkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: yuzu-wasm-web
+          path: engine/web/pkg
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------
+  # 发布 GitHub Release(tag v* 时)
+  # ---------------------------------------------------------------
+  release:
+    name: Publish Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [lyco, termux, engine]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Show artifacts
+        run: find artifacts -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
