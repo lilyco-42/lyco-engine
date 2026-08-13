@@ -1,5 +1,8 @@
 # lyco — 统一多语言脚手架工具
 
+[![crates.io](https://img.shields.io/crates/v/lyco.svg)](https://crates.io/crates/lyco)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 > `gh api` 驱动模板 + 声明式渲染。一条命令从 GitHub 模板仓库（或本地目录）生成可用的多语言项目骨架。
 
 覆盖 Android (Rust + Kotlin/Compose)、Minecraft Fabric Mod 等模板；支持自定义参数、占位符替换、
@@ -46,32 +49,50 @@
 
 ## 安装
 
-### 方式一：cargo install（推荐）
+已发布到 **crates.io**，并提供各平台预编译二进制（含 Termux）。
+
+### 方式一：cargo binstall（预编译，推荐）
+
+无需本地 Rust 工具链，直接从 GitHub Release 下载对应平台的二进制：
 
 ```bash
-cargo install --git https://github.com/lilyco-42/lyco-cli
-# 或本地
-cargo install --path .
+cargo binstall lyco
 ```
 
-### 方式二：源码构建
+支持 Windows / macOS（Intel + Apple Silicon）/ Linux（x86_64 + arm64，musl 静态）/ **Termux（Android arm64）**。
+
+### 方式二：cargo install（源码编译）
 
 ```bash
-git clone https://github.com/lilyco-42/lyco-cli.git
-cd lyco-cli
-cargo build --release
-./target/release/lyco --version
+cargo install lyco
+# 或从源码
+git clone https://github.com/lilyco-42/lyco-engine
+cd lyco-engine
+cargo install --path .
 ```
 
 **依赖**：Rust ≥ 1.70、[gh CLI](https://cli.github.com/)（`gh auth login` 登录）。
 
+### 方式三：GitHub Release 手动下载
+
+到 [Releases](https://github.com/lilyco-42/lyco-engine/releases) 下载对应平台的 `lyco-<target>` 二进制：
+
+| 平台 | 文件 |
+|------|------|
+| Windows | `lyco-x86_64-pc-windows-msvc` |
+| macOS Apple Silicon | `lyco-aarch64-apple-darwin` |
+| macOS Intel | `lyco-x86_64-apple-darwin` |
+| Linux x86_64 | `lyco-x86_64-unknown-linux-gnu` / `-musl` |
+| Linux arm64 | `lyco-aarch64-unknown-linux-musl` |
+| Termux / Android | `lyco-aarch64-linux-android` |
+
 ### 移动端 Termux / Android
 
-纯 Rust 二进制，Termux 上直接可用：
+纯 Rust 静态二进制，Termux 上直接可用：
 
 ```bash
 pkg install rust gh          # gh CLI 用于拉取模板
-cargo install --git https://github.com/lilyco-42/lyco-cli
+cargo binstall lyco         # 或 cargo install lyco
 lyco template list
 ```
 
@@ -408,6 +429,30 @@ bash tests/smoke.sh        # 113+ 项断言：CLI 表面/模板管理/生成正�
 
 冒烟测试使用隔离的 `LYCO_CONFIG` / `LYCO_CACHE`，不会触碰真实配置；模板缓存持久于
 `target/.smoke-cache`，复跑稳定且不重复下载。用 `LYCO_BIN` 可指定其他二进制（如 release）。
+
+### 发布（GitHub Actions 自动）
+
+`.github/workflows/build-release.yml` 在 push / PR 到 main 时构建验证；打版本 tag 自动发布：
+
+```bash
+# 1) bump 版本
+#    Cargo.toml 的 version 改为新版本
+cargo publish --registry crates-io          # 发布到 crates.io
+
+# 2) 打纯版本号 tag（触发 CI 构建全平台 + 发布 GitHub Release）
+git tag 0.1.3 && git push origin 0.1.3
+```
+
+CI 构建产物（`cargo binstall` 用）：
+
+| 目标 | 说明 |
+|------|------|
+| Windows / macOS / Linux | 主流平台，资产 `lyco-<target>` |
+| Termux / Android | `aarch64-linux-android`（NDK + cargo-ndk） |
+| yuzu 引擎 | `yuzu-cli` / `yuzu-server`（主流平台） |
+| WASM | web 播放器引擎绑定 |
+
+> tag 必须用**纯版本号**（如 `0.1.3`）而非 `v0.1.3`，`cargo binstall` 依此定位 release 资产。
 
 ---
 
