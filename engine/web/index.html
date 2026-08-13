@@ -9,7 +9,8 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>yuzu-web</h1>
+    <span class="brand-emblem" aria-hidden="true"></span>
+    <h1>yuzu-web <span class="brand-sub">WASM·VN</span></h1>
     <span class="version" id="engine-version" aria-live="polite">加载中…</span>
     <span class="spacer"></span>
     <label class="btn btn-open" for="file-input" title="选择本地的 .xp3 归档,在浏览器内解包并播放">
@@ -51,6 +52,12 @@
         <div id="choices"></div>
         <div class="hint" id="hint">点击舞台 / 空格 推进</div>
       </div>
+      <!-- 装饰:舞台四角支架(明日方舟式硬件边框) -->
+      <span class="gfx-corner tl" aria-hidden="true"></span>
+      <span class="gfx-corner tr" aria-hidden="true"></span>
+      <span class="gfx-corner bl" aria-hidden="true"></span>
+      <span class="gfx-corner br" aria-hidden="true"></span>
+      <span class="stage-strip" aria-hidden="true">yuzu·engine / RUNTIME</span>
       <audio id="voice" preload="none"></audio>
       <audio id="bgm" loop hidden></audio>
     </section>
