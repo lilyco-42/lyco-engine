@@ -12,6 +12,23 @@
 
 ---
 
+## 仓库里有什么
+
+本仓库包含**两个独立项目**，发布在同一个 [GitHub Release](https://github.com/lilyco-42/lyco-engine/releases) 下：
+
+| | **lyco**(根目录) | **engine/**(yuzu VN 引擎) |
+|---|---|---|
+| 本质 | 脚手架 CLI——一键生成项目骨架 | 千恋万花 Web 播放器——浏览器里玩 Galgame |
+| 用户 | 开发者 | 游戏玩家 / 移植者 |
+| 输入 | 模板仓库(`gh api` 拉取) | APK 或游戏数据目录 |
+| 输出 | 可构建的项目 | 浏览器里的游戏 |
+| 分发 | crates.io + `cargo binstall lyco` | Release 预编译二进制 |
+
+- **我要生成项目** → 看 [安装](#安装) + [快速开始](#快速开始)，用 `lyco`
+- **我想玩千恋万花** → 用 `engine` 的 `yuzu-cli`，一个 APK 一条命令自动开浏览器玩（详见 [`engine/README.md`](./engine/README.md)）
+
+---
+
 ## 目录
 
 - [特性](#特性)
