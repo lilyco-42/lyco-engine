@@ -36,11 +36,16 @@ const cacheKey = (source, path, tag = "") => `${source.kind}:${source.name}:${pa
 const SETTINGS_KEY = "yuzu-settings-v1";
 const SAVE_KEY = "yuzu-save-v1";
 const LAST_KEY = "yuzu-lastplayed-v1";
-let settings = { bgm: 0.8, voice: 1.0, speed: 0.8 };
+const DEFAULT_SETTINGS = { bgm: 0.8, voice: 1.0, speed: 0.8 };
+let settings = { ...DEFAULT_SETTINGS };
 try { settings = Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); } catch {}
 let autoMode = false, skipMode = false, autoTimer = null;
-const backlog = [];       // [{ who, text, scene }]
+const backlog = [];       // [{ who, text, scene, file, effectIndex, ts }]
 let lastVoiceSrc = null;  // 最近语音(点击 🔊 重放)
+let currentBgmName = null;   // 当前播放 BGM 名称(读档恢复用)
+let currentScnBase = null;   // 当前剧本 base(不含 .scn / scn\ 前缀)
+let replaying = false;       // 回看点击回跳:重放期间不重复记入 backlog
+let lastDialogueLen = 0;     // 最近一句台词长度(自动推进间隔随文本长度自适应)
 
 // ---------------- 日志 ----------------
 function log(...parts) {
@@ -221,8 +226,17 @@ async function main() {
   });
 
   // 交互:点击舞台 / 空格 / 回车 / → 推进;↑ 回看历史
-  $("stage").addEventListener("click", manualAdvance);
-  $("stage").addEventListener("wheel", (e) => { e.preventDefault(); manualAdvance(); }, { passive: false });
+  // 注意:控制栏按钮(自动/跳过/回看/存档…)嵌在 #stage 内,点击会冒泡到这里——必须忽略,
+  // 否则点「自动」会被 manualAdvance 的 stopAuto 立刻关掉、点「存档」还会多推一步。
+  $("stage").addEventListener("click", (e) => {
+    if (e.target.closest?.(".controls")) return;
+    manualAdvance();
+  });
+  $("stage").addEventListener("wheel", (e) => {
+    if (e.target.closest?.(".controls")) return;
+    e.preventDefault();
+    manualAdvance();
+  }, { passive: false });
   document.addEventListener("keydown", (e) => {
     if (["Space", "Enter", "ArrowRight", "ArrowDown"].includes(e.code)) {
       e.preventDefault();
@@ -230,6 +244,13 @@ async function main() {
     } else if (e.code === "ArrowUp") {
       e.preventDefault();
       openBacklog();
+    } else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      log("[快存] Ctrl+S → 槽 1");
+      saveSlot(0);
+    } else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "l") {
+      e.preventDefault();
+      loadSlot(0);
     }
   });
 
@@ -267,10 +288,11 @@ async function main() {
   for (const id of ["backlog-modal", "save-modal"]) {
     $(id).addEventListener("click", (e) => { if (e.target === $(id)) $(id).hidden = true; });
   }
-  // 🔊 重放最近语音
+  // 🔊 重放最近语音(阻断冒泡到 .stage,避免重播语音时又推进一步)
   const voiceInd = $("voice-ind");
   if (voiceInd) {
-    voiceInd.addEventListener("click", () => {
+    voiceInd.addEventListener("click", (ev) => {
+      ev.stopPropagation();
       if (lastVoiceSrc) { const a = $("voice"); a.src = lastVoiceSrc; a.play().catch(() => {}); }
     });
   }
@@ -388,6 +410,7 @@ async function loadScn(bytes, autoStart = true) {
   const compiled = JSON.parse(compile_scn(bytes));
   scenes = compiled.scenes;
   scnName = compiled.name || scnName;
+  currentScnBase = (compiled.name || "").replace(/^scn[\\/]/i, "").replace(/\.scn$/i, "");
 
   const sel = $("scene-select");
   sel.textContent = "";
@@ -447,8 +470,10 @@ let kagIndex = 0;
 let choosing = false; // 选择等待态:选项展示期间 advanceEngine 不跟随跳转
 
 let currentSceneLabel = null;
+let currentDlgIdx = -1; // 当前场景内最近显示的台词 effect 索引(存档精确恢复用;-1=尚无台词)
 async function playScene(label) {
   currentSceneLabel = label;
+  currentDlgIdx = -1;
   const s = scenes.find((x) => x.label === label);
   if (!s) return;
   if (/_(sel|select)$/i.test(label)) { showChoices(s); return; }
@@ -470,7 +495,7 @@ function advanceEngine() {
   const id = runId;
   while (kagIndex < kagEffects.length) {
     const e = kagEffects[kagIndex++];
-    applyEffect(e);
+    applyEffect(e, kagIndex - 1); // 记录该效果在场景内的索引,供回看回跳
     if (id !== runId) return; // 场景被跳转/切换接管
     if (e.type === "dialogue") {
       if (autoMode || skipMode) { scheduleNext(); return; }
@@ -491,14 +516,19 @@ function advanceEngine() {
   $("hint").textContent = "选择场景后可重播";
 }
 
-async function applyEffect(e) {
+async function applyEffect(e, effectIndex) {
   try {
     switch (e.type) {
       case "dialogue":
         $("speaker").textContent = e.character || "";
         $("dialogue-text").textContent = e.text;
-        backlog.push({ who: e.character || "…", text: e.text, scene: currentSceneLabel, ts: Date.now() });
-        if (backlog.length > 500) backlog.shift();
+        // 回看回跳时不重复记入 backlog(该句已存在)
+        if (!replaying) {
+          backlog.push({ who: e.character || "…", text: e.text, scene: currentSceneLabel, file: currentScnBase, effectIndex, ts: Date.now() });
+          if (backlog.length > 500) backlog.shift();
+        }
+        lastDialogueLen = e.text ? e.text.length : 0;
+        currentDlgIdx = effectIndex;   // 存档精确恢复:记住当前这句的位置
         if (e.voice) playVoice(e.voice);
         break;
       case "layer":
@@ -755,6 +785,8 @@ async function showChoices(selScene) {
       ev.stopPropagation();
       ev.preventDefault();
       choosing = false;
+      backlog.push({ who: "选择", text: btn.textContent.replace(/^\d+\.\s*/, ""), scene: currentSceneLabel, ts: Date.now() });
+      if (backlog.length > 500) backlog.shift();
       playScene(b.label);
     });
     box.appendChild(btn);
@@ -1030,6 +1062,7 @@ async function prefetchBgm(name) {
 /// 播放 BGM(bgm.xp3 懒加载 + 缓存,循环)。
 function playBgm(name) {
   const audio = $("bgm");
+  currentBgmName = name;
   const cand = [`${name}.opus`, `${name}.ogg`, `${name}.mp3`, `${name}`];
   (async () => {
     for (const path of cand) {
@@ -1042,6 +1075,7 @@ function playBgm(name) {
         return;
       } catch { /* 试下一种 */ }
     }
+    currentBgmName = null;
     log(`[BGM] 未找到 ${name}`);
   })();
 }
@@ -1078,11 +1112,20 @@ function isCharaName(name) {
 function isTlgBytes(b) {
   return b[0] === 0x54 && b[1] === 0x4c && b[2] === 0x47; // "TLG"
 }
+// 已显示图像的 blob URL 管理:每类只保留最近 3 个,旧的可回收(长流程不无限泄漏)
+const _shownUrls = { bg: [], chara: [] };
 function showBytes(kind, bytes) {
   const img = kind === "chara" ? $("character") : $("background");
-  img.src = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  img.src = url;
   img.hidden = false;
   $("stage-empty").hidden = true;
+  const arr = kind === "chara" ? "chara" : "bg";
+  _shownUrls[arr].push(url);
+  while (_shownUrls[arr].length > 3) {
+    const old = _shownUrls[arr].shift();
+    try { URL.revokeObjectURL(old); } catch { /* 忽略 */ }
+  }
 }
 
 function fmtSize(n) {
@@ -1114,24 +1157,41 @@ function manualAdvance() {
 
 function scheduleNext() {
   clearTimeout(autoTimer);
-  const delay = skipMode ? 60 : Math.round(settings.speed * 700);
+  if (skipMode) {
+    autoTimer = setTimeout(() => { if (autoMode || skipMode) advanceEngine(); }, 60);
+    return;
+  }
+  // 自动间隔随台词长度自适应:短句快、长句慢,读起来更自然
+  const base = Math.round(settings.speed * 700);
+  const lenFactor = Math.min(lastDialogueLen / 18, 2.5);
+  const delay = Math.round(base * (1 + 0.35 * lenFactor));
   autoTimer = setTimeout(() => { if (autoMode || skipMode) advanceEngine(); }, delay);
 }
 
 // ---------------- 设置 ----------------
 function bindSettings() {
   const bgm = $("set-bgm"), voice = $("set-voice"), speed = $("set-speed");
-  bgm.value = settings.bgm * 100;
-  voice.value = settings.voice * 100;
-  speed.value = String(settings.speed);
+  const sync = () => {
+    bgm.value = settings.bgm * 100;
+    voice.value = settings.voice * 100;
+    speed.value = String(settings.speed);
+  };
   const apply = () => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     $("bgm").volume = settings.bgm;
     $("voice").volume = settings.voice;
   };
+  sync();
   bgm.addEventListener("input", () => { settings.bgm = bgm.value / 100; apply(); });
   voice.addEventListener("input", () => { settings.voice = voice.value / 100; apply(); });
   speed.addEventListener("change", () => { settings.speed = parseFloat(speed.value); apply(); });
+  const reset = $("set-reset");
+  if (reset) reset.addEventListener("click", () => {
+    settings = { ...DEFAULT_SETTINGS };
+    sync();
+    apply();
+    log("[设置] 已恢复默认");
+  });
   apply();
 }
 
@@ -1145,6 +1205,9 @@ function openBacklog() {
   for (const b of backlog.slice().reverse()) {
     const row = document.createElement("div");
     row.className = "bl-row";
+    row.setAttribute("role", "button");
+    row.tabIndex = 0;
+    row.title = b.file && b.effectIndex != null ? "点击回到此处继续" : "";
     const who = document.createElement("div");
     who.className = "bl-who";
     who.textContent = (b.who || "…") + (b.scene ? ` · ${b.scene}` : "");
@@ -1152,10 +1215,60 @@ function openBacklog() {
     txt.className = "bl-text";
     txt.textContent = b.text;
     row.append(who, txt);
+    if (b.file && b.effectIndex != null) {
+      const go = () => {
+        $("backlog-modal").hidden = true;
+        replayToDialogue(b.file, b.scene, b.effectIndex);
+      };
+      row.addEventListener("click", go);
+      row.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+      });
+    }
     list.appendChild(row);
   }
   $("backlog-modal").hidden = false;
   list.scrollTop = list.scrollHeight;
+  const cap = $("backlog-cap");
+  if (cap) cap.textContent = backlog.length
+    ? `${backlog.length} 条 · 点击台词行可回到该句`
+    : "";
+}
+
+/// 回看回跳:重新执行该场景到目标句(重放视觉,不重复记入历史)。
+/// 目标句可能在另一个剧本文件(跨文件跳转后),需先按需重载。
+async function replayToDialogue(file, label, effectIndex) {
+  if (choosing) { log("[回看] 请先完成当前选择"); return; }
+  stopAuto();
+  try {
+    // 非当前剧本 → 跨文件懒加载目标文件(缓存内,零额外网络)
+    if (file && file !== currentScnBase) {
+      const loaded = await loadSceneFile(file);
+      if (!loaded) return;
+    }
+    const s = scenes.find((x) => x.label === label);
+    if (!s) { log(`[回看] 场景 ${label} 缺失`); return; }
+    if (!currentScnBytes) { log("[回看] 剧本字节缺失"); return; }
+    const effs = JSON.parse(kag_run_scene(currentScnBytes, label)).effects;
+    const idx = Math.min(effectIndex ?? 0, effs.length - 1);
+    runId++;            // 接管当前任何运行中的场景
+    choosing = false;
+    currentSceneLabel = label;
+    $("choices").textContent = "";
+    $("dialogue-box").hidden = false;
+    $("stage-empty").hidden = true;
+    replaying = true;   // 重放期间不重复写入 backlog
+    try {
+      for (let i = 0; i <= idx; i++) await applyEffect(effs[i], i);
+    } finally {
+      replaying = false;
+    }
+    log(`[回看] 回到 ${label} 第 ${idx + 1}/${effs.length} 步`);
+    $("hint").textContent = "点击舞台 / 空格 推进";
+    if (autoMode || skipMode) scheduleNext(); else stopAuto();
+  } catch (e) {
+    log(`[回看] 回跳失败: ${e?.message || e}`);
+  }
 }
 
 // ---------------- 存档 / 读档 ----------------
@@ -1171,8 +1284,16 @@ function openSaveModal(isSave) {
     btn.textContent = s
       ? `槽 ${i + 1} · ${new Date(s.ts).toLocaleString()} · ${(s.scn || "").replace(/.*[\\/]/, "").slice(0, 20)} @ ${s.label}`
       : `槽 ${i + 1} · 空`;
+    if (s && s.effectIndex != null) btn.textContent += ` · 步${s.effectIndex}`;
+    if (s && s.bgm) btn.textContent += " ♪";
     btn.title = s ? `${s.scn} → ${s.label}` : "尚未存档";
-    btn.addEventListener("click", async () => {
+    if (!isSave && !s) {
+      // 读档模式:空槽置灰,避免点了没反应又无提示
+      btn.disabled = true;
+      btn.textContent = `槽 ${i + 1} · 空(无存档)`;
+      btn.title = "该槽尚无存档";
+    }
+    if (!(!isSave && !s)) btn.addEventListener("click", async () => {
       if (isSave) {
         await saveSlot(i);
         openSaveModal(true);
@@ -1193,8 +1314,9 @@ async function saveSlot(i) {
     label: currentSceneLabel,
     scn: scnName,
     source: currentSource.kind === "backend" ? currentSource.name : null,
+    effectIndex: currentDlgIdx >= 0 ? currentDlgIdx : undefined, // 场景内精确位置,读档恢复到同一句
     ts: Date.now(),
-    bgm: $("bgm").src,
+    bgm: currentBgmName,   // 存档当前 BGM 名,读档后恢复(而非易失的 blob URL)
   };
   localStorage.setItem(SAVE_KEY, JSON.stringify(all));
   log(`[存档] 槽 ${i + 1} → ${currentSceneLabel}`);
@@ -1210,9 +1332,19 @@ async function loadSlot(i) {
   const base = (s.scn || "").replace(/^scn[\\/]/i, "").replace(/\.scn$/i, "");
   const loaded = await loadSceneFile(base);
   if (loaded) {
-    const target = scenes.find((x) => x.label === s.label)
-      || loaded.find((x) => x.steps.some((st) => st.type === "dialogue"));
-    if (target) playScene(target.label);
+    const exact = scenes.find((x) => x.label === s.label);
+    const target = exact || loaded.find((x) => x.steps.some((st) => st.type === "dialogue"));
+    if (target) {
+      if (s.effectIndex != null && exact) {
+        // 精确恢复:重放到存档时的同一句(复用回看回跳机制,不从头重放)
+        await replayToDialogue(base, s.label, s.effectIndex);
+        log(`[读档] 已恢复到 ${s.label} 第 ${s.effectIndex} 步`);
+      } else {
+        playScene(target.label);
+      }
+      // 恢复存档时正在播放的 BGM(名称持久化,读档后重新懒加载)
+      if (s.bgm) playBgm(s.bgm);
+    }
   }
 }
 
