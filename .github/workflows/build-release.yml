@@ -74,7 +74,8 @@ jobs:
           SRC="target/${{ matrix.target }}/release/$BIN"
           [ -f "$SRC" ] || SRC="target/release/$BIN"
           mkdir -p dist
-          cp "$SRC" "dist/lyco-${{ matrix.target }}$( [ "${{ matrix.os }}" = "windows-latest" ] && echo .exe || echo '' )"
+          # 统一命名 `lyco-{target}`(Windows 也去 .exe),匹配 cargo-binstall 的 {target} 模板
+          cp "$SRC" "dist/lyco-${{ matrix.target }}"
 
       - uses: actions/upload-artifact@v4
         with:

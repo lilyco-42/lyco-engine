@@ -11,10 +11,10 @@ keywords = ["scaffold", "template", "cli", "android", "minecraft"]
 categories = ["command-line-utilities", "development-tools"]
 exclude = [".github/", "engine/", "tests/", "target/", "process_whitelist.json", ".opencode/", ".claude/"]
 
-# cargo-binstall 索引:release 资产按 `lyco-{target}` 命名(见 .github/workflows/build-release.yml)。
-# {binary_ext} 让 Windows 展开为 .exe(资产为 lyco-x86_64-pc-windows-msvc.exe),其余平台为空。
+# cargo-binstall 索引:release 资产统一命名 `lyco-{target}`(Windows 也不带 .exe)。
+# binstall 的 {target} 直接匹配;裸二进制由 pkg-fmt=bin 处理,Windows 下载后自动加 .exe。
 [package.metadata.binstall]
-pkg-url = "https://github.com/lilyco-42/lyco-engine/releases/download/{version}/lyco-{target}{binary_ext}"
+pkg-url = "https://github.com/lilyco-42/lyco-engine/releases/download/{version}/lyco-{target}"
 pkg-fmt = "bin"
 
 [dependencies]
