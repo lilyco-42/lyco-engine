@@ -39,10 +39,11 @@ yuzu-cli 千恋万花.apk
 yuzu-cli 你的数据目录/      # 或 yuzu-cli web --data 你的数据目录/
 ```
 
-> **发布流程(仓库维护者)**:打纯版本号 tag(如 `0.1.2`)触发 GitHub Actions 自动构建并发布
-> [GitHub Release](https://github.com/lilyco-42/lyco-engine/releases),资产含各平台的 `yuzu-cli` /
-> `yuzu-server`(Windows 为 `.exe`)及 `lyco-<target>`。二进制内嵌播放器资源,单文件可运行,无需 `web/` 目录。
-> `cargo binstall lyco` 亦可直接安装(见仓库根 README)。
+> **安装方式**:`cargo install --path crates/yuzu-cli`(源码编译);或到
+> [Releases](https://github.com/lilyco-42/lyco-engine/releases) 下载对应平台的 `yuzu-cli-*` 预编译二进制
+> (Windows 为 `yuzu-cli-x86_64-pc-windows-msvc`)。二进制内嵌播放器资源,单文件可运行,无需 `web/` 目录。
+> **维护者发布**:打纯版本号 tag(如 `0.1.3`)触发 GitHub Actions 自动构建并上传 Release。
+> (未发布 crates.io,故 `cargo binstall` 不可用。)
 
 ---
 
