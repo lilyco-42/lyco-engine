@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="docs/banner.svg" width="720" alt="banner">
+</div>
+
 # lyco — 统一多语言脚手架工具
 
 [![crates.io](https://img.shields.io/crates/v/lyco.svg)](https://crates.io/crates/lyco)
